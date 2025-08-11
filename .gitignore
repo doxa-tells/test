@@ -1,0 +1,12 @@
+**/.env
+**/node_modules/
+telegram_bot/mirror.session
+telegram_bot/mirror.session.session
+telegram_bot/mirror.session.session-journal
+telegram_bot/personal_matcher_session*
+whatsapp_bot/.wwebjs_auth/
+whatsapp_bot/.wwebjs_cache/
+__pycache__/
+*.pyc
+*.pyo
+*.log

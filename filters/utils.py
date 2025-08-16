@@ -38,7 +38,7 @@ def match_profile_with_casting(casting_text, profile):
 
     try:
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "Ты профессиональный кастинг-директор."},
                 {"role": "user", "content": prompt}

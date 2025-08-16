@@ -1,4 +1,4 @@
-import base64
+cimport base64
 from openai import OpenAI
 from dotenv import load_dotenv
 import os
@@ -71,7 +71,7 @@ async def format_casting_template(text, image_path=None):
         try:
             print(f"🔁 Попытка форматирования #{attempt}")
             response = openai_client.chat.completions.create(
-                model="gpt-4o",
+                model="gpt-4o-mini",
                 messages=[{"role": "user", "content": base_content}],
                 max_tokens=1000
             )

@@ -53,7 +53,7 @@ async def is_casting_ai(text, image_path=None):
     try:
         print("🤖 Отправка запроса в GPT-4o...")
         response = openai_client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4o-mini",
             messages=[{"role": "user", "content": content}],
             max_tokens=5
         )

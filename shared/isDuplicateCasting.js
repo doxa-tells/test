@@ -55,7 +55,7 @@ async function isDuplicateCasting(text = '', ocrText = '') {
             }
         }
 
-        fs.writeFileSync(DB_PATH, JSON.stringify(seen.slice(-1000), null, 2), 'utf-8');
+        fs.writeFileSync(DB_PATH, JSON.stringify(seen.slice(-20), null, 2), 'utf-8');
         return false;
 
     } catch (err) {

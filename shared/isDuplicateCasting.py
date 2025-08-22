@@ -43,7 +43,7 @@ def is_duplicate_casting(text='', ocr_text=''):
             seen.append(combined_normalized)
             db_file.seek(0)
             db_file.truncate()
-            json.dump(seen[-1000:], db_file, ensure_ascii=False, indent=2)
+            json.dump(seen[-20:], db_file, ensure_ascii=False, indent=2)
 
         finally:
             fcntl.flock(db_file, fcntl.LOCK_UN)

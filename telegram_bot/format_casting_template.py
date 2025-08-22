@@ -1,4 +1,4 @@
-cimport base64
+import base64
 from openai import OpenAI
 from dotenv import load_dotenv
 import os

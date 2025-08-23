@@ -10,3 +10,7 @@ __pycache__/
 *.pyc
 *.pyo
 *.log
+*.db
+*.session
+/data/user_media/
+/filters/media/

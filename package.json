@@ -5,6 +5,7 @@
     "fuzzball": "^2.2.2",
     "openai": "^5.11.0",
     "proper-lockfile": "^4.1.2",
+    "puppeteer": "^24.18.0",
     "tesseract.js": "^6.0.1"
   }
 }

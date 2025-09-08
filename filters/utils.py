@@ -1,63 +1,318 @@
+# -*- coding: utf-8 -*-
 import os
-from openai import OpenAI
-from dotenv import load_dotenv
+import json
+import sqlite3
 from pathlib import Path
+from typing import List, Dict, Any, Optional, Iterable
+from datetime import datetime
 
-# Подгружаем ключ
-env_path = Path(__file__).resolve().parent.parent / "telegram_bot" / ".env"
-load_dotenv(dotenv_path=env_path)
-openai_key = os.getenv("OPENAI_API_KEY")
+# не создаём OpenAI-клиент на уровне модуля — .env может загрузиться выше
+try:
+    from openai import OpenAI
+except Exception:
+    OpenAI = None
 
-client = OpenAI(api_key=openai_key)
 
-def match_profile_with_casting(casting_text, profile):
-    """
-    Возвращает True, если кастинг подходит под профиль.
-    """
-    prompt = f"""
-У тебя есть кастинг и актёрский профиль. Твоя задача — определить, подходит ли данный кастинг этому человеку.
+# ---------- пути ----------
+def project_root() -> Path:
+    return Path(__file__).resolve().parents[1]
 
-Будь гибким:
-- Если в кастинге отсутствуют какие-либо требования (например, типаж, рост или телосложение), это не должно мешать подбору.
-- Если параметры совпадают частично, но по сути человек мог бы подойти на роль — также считай, что подходит.
+def db_path() -> Path:
+    return project_root() / "data" / "actors.db"
 
-📄 Кастинг:
-{casting_text}
 
-👤 Профиль актёра:
-Пол: {profile.get('sex', '-')}
-Типаж: {profile.get('type', '-')}
-Игровой Возраст: {profile.get('age', '-')}
-Рост: {profile.get('height', '-')}
-Телосложение: {profile.get('body', '-')}
-Город: {profile.get('location', '-')}
+# ---------- внутренняя утилита: безопасно открыть БД ----------
+def _connect():
+    path = db_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    con = sqlite3.connect(str(path))
+    con.row_factory = sqlite3.Row
+    return con
 
-Подходит ли данный кастинг этому человеку?
-Ответь строго: да или нет.
-"""
+
+# ---------- users ----------
+def _row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
+    d = dict(row)
+    for k in ("height_cm", "weight_kg"):
+        if d.get(k) in (None, "", "None"):
+            d[k] = None
+        else:
+            try:
+                d[k] = int(d[k])
+            except Exception:
+                pass
+    return d
+
+def get_all_users() -> List[Dict[str, Any]]:
+    path = db_path()
+    if not path.exists():
+        print("⚠️  actors.db не найден.")
+        return []
+    con = _connect()
+    cur = con.cursor()
+    try:
+        cur.execute("SELECT * FROM users ORDER BY updated_at DESC")
+    except Exception:
+        cur.execute("SELECT * FROM users")
+    rows = cur.fetchall()
+    con.close()
+    return [_row_to_dict(r) for r in rows]
+
+
+# ---------- утилиты форматирования ----------
+def _as_list_from_csv(v: Any) -> List[str]:
+    if v is None:
+        return []
+    if isinstance(v, list):
+        return [str(x).strip() for x in v if str(x).strip()]
+    return [s.strip() for s in str(v).split(",") if s.strip()]
+
+def _val(v: Optional[str]) -> str:
+    return str(v or "").strip()
+
+def _short_user_summary(u: Dict[str, Any]) -> str:
+    name = _val(u.get("full_name")) or "—"
+    sex = _val(u.get("sex")) or "—"
+    cities = _val(u.get("cities")) or "—"
+    return f"id={u.get('user_id')} | {name} | {sex} | {cities}"
+
+
+# ---------- prompt ----------
+def build_match_prompt(profile: Dict[str, Any], casting_text: str) -> str:
+    sex       = _val(profile.get("sex"))
+    cities    = _val(profile.get("cities"))
+    age_range = _val(profile.get("age_range"))
+    look_type = _val(profile.get("look_type"))
+    body_type = _val(profile.get("body_type"))
+    height_cm = _val(profile.get("height_cm"))
+    weight_kg = _val(profile.get("weight_kg"))
+    hair      = _val(profile.get("hair"))
+    languages = _val(profile.get("languages"))
+
+    return (
+        "У тебя есть кастинг и актёрский профиль. "
+        "Определи, подходит ли кастинг этому человеку.\n"
+        "Будь гибким к неполным требованиям; если по сути человек мог бы подойти — считай, что подходит. "
+        "Особенно внимательно смотри на город(а) и пол — они обязательные условия. "
+        "Возраст оценивай по 'игровому возрасту': допускается диапазон примерно ±5 лет. "
+        "По другим параметрам (типаж, телосложение, рост и т.д.) будь гибким: "
+        "если явно не противоречит описанию роли, считай что подходит.\n"
+        "Отвечай строго одним словом: 'да' или 'нет'.\n\n"
+        f"=== ПРОФИЛЬ ===\n"
+        f"Пол: {sex}\n"
+        f"Города: {cities}\n"
+        f"Игровой возраст: {age_range}\n"
+        f"Типаж внешности: {look_type}\n"
+        f"Телосложение: {body_type}\n"
+        f"Рост: {height_cm}\n"
+        f"Вес: {weight_kg}\n"
+        f"Волосы: {hair}\n"
+        f"Языки: {languages}\n\n"
+        f"=== КАСТИНГ ===\n{casting_text}\n\n"
+        "Ответ: "
+    )
+
+
+# ---------- OpenAI ----------
+def _get_openai_client():
+    if OpenAI is None:
+        raise RuntimeError("Пакет openai не установлен. Установи: pip install openai")
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise RuntimeError("OPENAI_API_KEY не найден в окружении (.env).")
+    return OpenAI(api_key=api_key)
+
+def check_match_ai(profile: Dict[str, Any], casting_text: str, *, debug: bool = False) -> bool:
+    prompt = build_match_prompt(profile, casting_text)
+
+    if debug:
+        print("\n" + "—" * 60)
+        print(f"👤 Пользователь: { _short_user_summary(profile) }")
+        print("📝 Промпт в ИИ:\n" + prompt)
+        print("—" * 60)
 
     try:
-        response = client.chat.completions.create(
+        client = _get_openai_client()
+        resp = client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "Ты профессиональный кастинг-директор."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.3,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.2,
+            max_tokens=8,
         )
-
-        answer = response.choices[0].message.content.strip().lower()
-        print(f"🤖 Ответ GPT: {answer}")  # лог для отладки
-
-        # Строгая проверка
-        if answer.startswith("да"):
-            return True
-        elif answer.startswith("нет"):
-            return False
-        else:
-            print("⚠️ Нестандартный ответ от GPT, считаем как 'нет'")
-            return False
-
+        text = (resp.choices[0].message.content or "").strip().lower()
+        if debug:
+            print(f"🤖 Ответ модели: {text!r}")
+        return text.startswith("да")
     except Exception as e:
-        print(f"❌ Ошибка при сопоставлении профиля: {e}")
-        return False
+        print(f"⚠️ Ошибка запроса к ИИ: {e}")
+        # простой фоллбэк: город + пол в тексте
+        try:
+            cities = _as_list_from_csv(profile.get("cities"))
+            sex = _val(profile.get("sex")).lower()
+            text = casting_text.lower()
+            return bool(any(c.lower() in text for c in cities) and (sex and sex in text))
+        except Exception:
+            return False
+
+
+# ---------- MATCHES ----------
+def _ensure_matches_table(cur: sqlite3.Cursor):
+    """Создаём таблицу matches, если её ещё нет (на случай запуска мэтчера без user_reg_bot)."""
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS matches (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            source_chat INTEGER,
+            thread_id INTEGER,
+            message_ids TEXT,
+            text_cache TEXT,
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+    # индекс для быстрых выборок
+    cur.execute(
+        "CREATE INDEX IF NOT EXISTS idx_matches_user_created "
+        "ON matches(user_id, created_at DESC)"
+    )
+
+def store_match(
+    user_id: int,
+    source_chat: Optional[int],
+    thread_id: Optional[int],
+    message_ids: Iterable[int],
+    text_cache: str = "",
+) -> int:
+    """
+    Сохраняет подходящий кастинг в таблицу matches.
+    message_ids — iterable из int (для альбомов несколько id).
+    Возвращает id вставленной строки.
+    """
+    con = _connect()
+    cur = con.cursor()
+    _ensure_matches_table(cur)
+
+    now = datetime.utcnow().isoformat()
+    mids = [int(m) for m in (message_ids or [])]
+
+    cur.execute(
+        """
+        INSERT INTO matches (user_id, source_chat, thread_id, message_ids, text_cache, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (
+            int(user_id),
+            int(source_chat) if source_chat is not None else None,
+            int(thread_id) if thread_id is not None else None,
+            json.dumps(mids),
+            text_cache or "",
+            now,
+        ),
+    )
+    match_id = cur.lastrowid
+    con.commit()
+    con.close()
+    return match_id
+
+def purge_old_matches(days: int = 7) -> int:
+    """Удаляет матчи старше `days` дней. Возвращает количество удалённых строк."""
+    con = _connect()
+    cur = con.cursor()
+    _ensure_matches_table(cur)
+    cur.execute(
+        "DELETE FROM matches WHERE datetime(created_at) < datetime('now', ?)",
+        (f"-{int(days)} days",),
+    )
+    deleted = cur.rowcount or 0
+    con.commit()
+    con.close()
+    return deleted
+
+def get_user_matches(uid: int, limit: int = 50) -> List[Dict[str, Any]]:
+    """
+    Возвращает свежие (<=7 дней) матчи пользователя, самые новые сначала.
+    """
+    con = _connect()
+    cur = con.cursor()
+    _ensure_matches_table(cur)
+    # подчистим просроченные
+    cur.execute("DELETE FROM matches WHERE datetime(created_at) < datetime('now','-7 days')")
+    con.commit()
+
+    cur.execute(
+        "SELECT * FROM matches WHERE user_id=? ORDER BY datetime(created_at) DESC, id DESC LIMIT ?",
+        (int(uid), int(limit)),
+    )
+    rows = [dict(r) for r in cur.fetchall()]
+    con.close()
+
+    # message_ids JSON -> list[int]
+    for r in rows:
+        try:
+            mids = json.loads(r.get("message_ids") or "[]")
+            r["message_ids"] = [int(x) for x in mids]
+        except Exception:
+            r["message_ids"] = []
+    return rows
+
+
+# ---------- NOTICES (уведомления "Смотреть кастинги") ----------
+def _ensure_notices_table(cur: sqlite3.Cursor):
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS notices
+        (
+            id
+            INTEGER
+            PRIMARY
+            KEY
+            AUTOINCREMENT,
+            user_id
+            INTEGER
+            NOT
+            NULL,
+            msg_id
+            INTEGER
+            NOT
+            NULL,
+            created_at
+            TEXT
+            NOT
+            NULL
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_notices_user ON notices(user_id)")
+
+
+def store_notice(user_id: int, msg_id: int) -> None:
+    con = _connect();
+    cur = con.cursor()
+    _ensure_notices_table(cur)
+    cur.execute(
+        "INSERT INTO notices (user_id, msg_id, created_at) VALUES (?, ?, datetime('now'))",
+        (int(user_id), int(msg_id)),
+    )
+    con.commit();
+    con.close()
+
+def fetch_and_clear_notices(user_id: int, except_id: Optional[int] = None) -> list[int]:
+    """
+    Возвращает все сохранённые msg_id уведомлений пользователя и удаляет их из БД.
+    except_id — можно передать id, который уже удалили вручную (по клику), его вернём,
+    но удалять не будем — чтобы не ловить лишние ошибки.
+    """
+    con = _connect();
+    cur = con.cursor()
+    _ensure_notices_table(cur)
+    cur.execute("SELECT msg_id FROM notices WHERE user_id=?", (int(user_id),))
+    ids = [r[0] for r in cur.fetchall()]
+    if ids:
+        cur.execute("DELETE FROM notices WHERE user_id=?", (int(user_id),))
+        con.commit()
+    con.close()
+    # если надо — исключим один id
+    if except_id is not None:
+        ids = [i for i in ids if i != except_id]
+    return ids

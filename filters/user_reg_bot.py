@@ -19,12 +19,13 @@
 import os
 import sqlite3
 import json
-from telethon import types
 import base64
+import aiohttp  # для HTTP-вызовов Bot API
+from telethon import types
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Optional
-
+from utils import fetch_and_clear_notices
 from dotenv import load_dotenv
 from telethon import TelegramClient, events, Button
 from telethon.tl.custom.message import Message
@@ -60,6 +61,7 @@ def _getenv(name: str, required=True, cast=None):
 API_ID    = _getenv("API_ID",   required=True, cast=int)
 API_HASH  = _getenv("API_HASH", required=True)
 BOT_TOKEN = _getenv("BOT_TOKEN", required=True)
+WEBAPP_URL = _getenv("WEBAPP_URL", required=True)
 
 # --- STORAGE ----------------------------------------------------------------
 
@@ -110,6 +112,34 @@ def init_db():
         )
         """
     )
+    # --- таблица подходящих кастингов (matches) ---
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS matches (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            source_chat INTEGER,
+            thread_id INTEGER,
+            message_ids TEXT,      -- JSON: [int, ...] для альбомов/постов
+            text_cache TEXT,       -- текст кастинга на всякий
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+    # --- согласие с офертой/политикой (персистентный флаг) ---
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS consents (
+            user_id INTEGER PRIMARY KEY,
+            accepted_at TEXT NOT NULL
+        )
+        """
+    )
+    # индексы
+    try:
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_matches_user_created ON matches(user_id, created_at DESC)")
+    except Exception:
+        pass
     # миграция на случай старой базы
     for col in ("photo1_tg","photo2_tg","photo3_tg","photo4_tg"):
         try:
@@ -118,6 +148,106 @@ def init_db():
             pass
     con.commit()
     con.close()
+
+def purge_old_matches(con=None):
+    own = False
+    if con is None:
+        con = sqlite3.connect(DB_PATH); own = True
+    cur = con.cursor()
+    # заменяем 'T' -> ' ' для корректного парсинга датой SQLite
+    cur.execute("""
+        DELETE FROM matches
+        WHERE datetime(replace(created_at,'T',' ')) < datetime('now','-7 days')
+    """)
+    deleted = cur.rowcount or 0
+    if own:
+        con.commit(); con.close()
+    return deleted
+
+def get_user_matches(uid: int):
+    con = sqlite3.connect(DB_PATH)
+    con.row_factory = sqlite3.Row
+    cur = con.cursor()
+    purge_old_matches(con)
+    cur.execute(
+        """
+        SELECT * FROM matches
+        WHERE user_id=?
+        ORDER BY datetime(replace(created_at,'T',' ')) DESC, id DESC
+        """,
+        (uid,)
+    )
+    rows = [dict(r) for r in cur.fetchall()]
+    con.close()
+    for r in rows:
+        try:
+            mids = json.loads(r.get("message_ids") or "[]")
+            r["message_ids"] = [int(x) for x in mids]
+        except Exception:
+            r["message_ids"] = []
+    return rows
+
+# ---- согласие: хелперы ----------------------------------------------------
+
+def has_consent(uid: int) -> bool:
+    con = sqlite3.connect(DB_PATH)
+    cur = con.cursor()
+    cur.execute("SELECT 1 FROM consents WHERE user_id=?", (uid,))
+    ok = cur.fetchone() is not None
+    con.close()
+    return ok
+
+def store_consent(uid: int):
+    con = sqlite3.connect(DB_PATH)
+    cur = con.cursor()
+    cur.execute(
+        "INSERT OR REPLACE INTO consents(user_id, accepted_at) VALUES(?, ?)",
+        (uid, datetime.utcnow().isoformat())
+    )
+    con.commit()
+    con.close()
+
+CONSENT_TEXT = (
+    "🔐 **Согласие с условиями**\n\n"
+    "Нажимая «Принять», вы подтверждаете, что ознакомились и соглашаетесь с "
+    "[Публичной офертой](https://roletapp.kz/oferta/) и "
+    "[Политикой конфиденциальности](https://roletapp.kz/privacy/).\n\n"
+    "После принятия я продолжу выбранное вами действие."
+)
+
+CONSENT_ACTIONS = {"start_form_or_profile", "my_profile", "view_castings", "open_tariff"}
+
+async def guard_consent(ev: events.CallbackQuery.Event, action: str) -> bool:
+    """
+    Если согласие ещё не дано — редактируем текущее сообщение на экран согласия.
+    Возвращает True, если показали экран согласия (и вызывающему обработчику надо сделать return).
+    """
+    if action not in CONSENT_ACTIONS:
+        return False
+    uid = ev.sender_id
+    if has_consent(uid):
+        return False
+    try:
+        await client.edit_message(
+            ev.chat_id,
+            ev.message_id,
+            CONSENT_TEXT,
+            buttons=[
+                [Button.inline("✅ Принять", f"consent_ok:{action}".encode("utf-8"))],
+                [Button.inline("✖️ Отмена", b"consent_cancel")]
+            ],
+            link_preview=False,
+            parse_mode="markdown",
+        )
+        # зафиксируем, что это «текущий экран» для дальнейших редактирований
+        STATE.setdefault(uid, {})["screen_id"] = ev.message_id
+    except Exception:
+        # запасной вариант — отправим новым сообщением
+        await render_text(uid, ev.chat_id, CONSENT_TEXT, buttons=[
+            [Button.inline("✅ Принять", f"consent_ok:{action}".encode("utf-8"))],
+            [Button.inline("✖️ Отмена", b"consent_cancel")]
+        ])
+    return True
 
 def button_only(step: Dict[str, Any]) -> bool:
     # Любой шаг, где предполагается выбор по кнопкам
@@ -204,6 +334,47 @@ def get_user(user_id: int) -> Optional[Dict[str, Any]]:
             except Exception:
                 pass
     return d
+# --- bot api ------------------------------------------------------------------
+BOT_API_BASE = f"https://api.telegram.org/bot{BOT_TOKEN}"
+
+async def botapi_send_message(chat_id: int, text: str, reply_markup: dict) -> Optional[int]:
+    """
+    Отправляет сообщение через Bot API.
+    Возвращает message_id при успехе, иначе None.
+    """
+    payload = {
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": "Markdown",
+        "disable_web_page_preview": True,
+        "reply_markup": reply_markup,
+    }
+    async with aiohttp.ClientSession() as session:
+        async with session.post(f"{BOT_API_BASE}/sendMessage", json=payload) as resp:
+            data = await resp.json()
+            if data.get("ok") and data.get("result"):
+                return int(data["result"]["message_id"])
+            else:
+                print("BotAPI sendMessage error:", data)
+                return None
+
+async def botapi_delete_message(chat_id: int, message_id: int) -> bool:
+    payload = {"chat_id": chat_id, "message_id": message_id}
+    async with aiohttp.ClientSession() as session:
+        async with session.post(f"{BOT_API_BASE}/deleteMessage", json=payload) as resp:
+            data = await resp.json()
+            if data.get("ok"):
+                return True
+            # Идемпотентность: если сообщения уже нет, считаем всё ОК
+            if (
+                data.get("error_code") == 400 and
+                isinstance(data.get("description"), str) and
+                "message to delete not found" in data["description"].lower()
+            ):
+                return True
+            # Остальные ошибки — логируем и возвращаем False
+            print("BotAPI deleteMessage error:", data)
+            return False
 
 # --- STATE ------------------------------------------------------------------
 
@@ -216,8 +387,6 @@ WELCOME = (
     "Нашей БЕСПЛАТНОЙ базой пользуются более 40 кастинг-директоров "
     "**Salem, TigerFilms, Freedom Media, Unico Play и др.**\n\n"
     "Используйте кнопки ниже:\n\n"
-    "📝 Попасть в базу - Cоздать анкету\n"
-    "👤 Моя анкета - Проверить анкету"
 )
 
 # лимит выбранных городов
@@ -293,8 +462,132 @@ async def render_menu(chat_id: int, uid: int):
         buttons=[
             [Button.inline("📝 Попасть в базу (5 мин)", b"start_form_or_profile")],
             [Button.inline("📇 Моя анкета", b"my_profile")],
+            [Button.inline("📰 Смотреть кастинги", b"view_castings")],
+            [Button.inline("⚡ Подключить ИИ кастинг-агента", b"open_tariff")],
         ],
     )
+
+async def clear_sticky_notices(chat_id: int, uid: int, except_id: Optional[int] = None):
+    """
+    Удаляет все сообщения-уведомления, которые мы ранее отправляли пользователю.
+    except_id — тот id, который уже удалён (например, ev.delete()).
+    """
+    ids = fetch_and_clear_notices(uid, except_id=except_id)
+    if not ids:
+        return
+    try:
+        await client.delete_messages(chat_id, ids, revoke=True)
+    except Exception:
+        pass
+
+async def _render_match_view(uid: int, chat_id: int, match: dict, pos: int, total: int):
+    """
+    Показывает оригинальный пост с нужным поведением:
+      • 1 фото + текст  -> одно сообщение (медиа+подпись+позиция+кнопки)
+      • только текст     -> одно сообщение (текст+позиция+кнопки)
+      • альбом/неск.фото -> альбом отдельным сообщением, позиция+кнопки — вторым
+    """
+    # 0) очистим предыдущий показ
+    st = STATE.setdefault(uid, {})
+    old_ids = st.get("castings_msg_ids") or []
+    if old_ids:
+        try: await client.delete_messages(chat_id, old_ids, revoke=True)
+        except Exception: pass
+        st["castings_msg_ids"] = []
+    if st.get("castings_nav_id"):
+        try: await client.delete_messages(chat_id, st["castings_nav_id"], revoke=True)
+        except Exception: pass
+        st["castings_nav_id"] = None
+
+    # 1) достаём оригинальные сообщения
+    source_chat = match.get("source_chat")
+    message_ids = match.get("message_ids") or []
+    src_msgs = []
+    if source_chat and message_ids:
+        try:
+            got = await client.get_messages(int(source_chat), ids=message_ids)
+            src_msgs = got if isinstance(got, list) else [got]
+        except Exception:
+            src_msgs = []
+
+    # 2) текст подписи
+    text_cache = match.get("text_cache") or ""
+    caption = _extract_original_text(src_msgs, fallback=text_cache) or ""
+
+    # 3) случай: РОВНО ОДНО медиа (не альбом) -> одно сообщение с кнопками
+    if len(src_msgs) == 1:
+        msg0 = src_msgs[0]
+        is_single_media = bool(getattr(msg0, "media", None)) and getattr(msg0, "grouped_id", None) is None
+        if is_single_media:
+            full_caption = (caption + f"\n\nПозиция: {pos}/{total}").strip()
+            try:
+                sent = await client.send_file(
+                    chat_id,
+                    file=msg0,  # Telethon умеет ре-аплоадить Message как входной файл
+                    caption=full_caption,
+                    buttons=[
+                        [Button.inline("◀️", b"cast_prev"), Button.inline("▶️", b"cast_next")],
+                        [Button.inline("🏠 Главное меню", b"home")],
+                    ],
+                    link_preview=False,
+                )
+                st["castings_msg_ids"] = [sent.id]
+                st["castings_nav_id"] = None
+                return  # ничего дополнительно не шлём
+            except Exception as e:
+                print(f"⚠️ Не удалось отправить единичное медиа с кнопками: {e}")
+                # упадём в общий фоллбэк ниже
+
+    # 4) готовим файлы (если есть)
+    files = await _download_media_files(src_msgs)
+
+    # 4a) ТОЛЬКО ТЕКСТ -> одно сообщение с кнопками
+    if not files:
+        sent = await client.send_message(
+            chat_id,
+            ((caption + f"\n\nПозиция: {pos}/{total}").strip() if caption else f"Позиция: {pos}/{total}"),
+            buttons=[
+                [Button.inline("◀️", b"cast_prev"), Button.inline("▶️", b"cast_next")],
+                [Button.inline("🏠 Главное меню", b"home")],
+            ],
+            link_preview=False,
+        )
+        st["castings_msg_ids"] = [sent.id]
+        st["castings_nav_id"] = None
+        return
+
+    # 4b) АЛЬБОМ / несколько файлов -> контент отдельно, навигация отдельно
+    sent_ids = []
+    try:
+        if len(files) == 1:
+            m = await client.send_file(chat_id, files[0], caption=caption, link_preview=False)
+            sent_ids.append(m.id)
+        else:
+            mm = await client.send_file(chat_id, files, album=True, caption=caption, link_preview=False)
+            sent_ids.extend([x.id for x in mm])
+    finally:
+        # подчистим времянки
+        for f in files:
+            try:
+                if os.path.exists(f):
+                    os.remove(f)
+            except Exception:
+                pass
+
+    st["castings_msg_ids"] = sent_ids
+
+    # 5) отдельное сообщение с позицией и кнопками (для альбомов)
+    nav = await client.send_message(
+        chat_id,
+        f"Позиция: {pos}/{total}",
+        buttons=[
+            [Button.inline("◀️", b"cast_prev"), Button.inline("▶️", b"cast_next")],
+            [Button.inline("⬅️ Назад", b"back")],
+            [Button.inline("🏠 Главное меню", b"home")],
+        ],
+        link_preview=False,
+    )
+    st["castings_nav_id"] = nav.id
 
 # --- WIZARD -----------------------------------------------------------------
 
@@ -398,15 +691,6 @@ def prefill_answers_from_user(u: Dict[str, Any]) -> Dict[str, Any]:
         "photo4_tg":    u.get("photo4_tg"),
     }
 
-async def show_edit_menu(uid: int, chat_id: int):
-    txt = "Что хотите изменить?"
-    buttons = [
-        [Button.inline("📝 Изменить анкету",  b"edit_form")],
-        [Button.inline("📷 Изменить фотографии", b"edit_photos")],
-        [Button.inline("🏠 Главное меню", b"home")],
-    ]
-    await render_text(uid, chat_id, txt, buttons=buttons)
-
 async def delete_album(chat_id: int, uid: int):
     st = STATE.get(uid)
     if not st:
@@ -418,6 +702,42 @@ async def delete_album(chat_id: int, uid: int):
         except Exception:
             pass
         st["album_msg_ids"] = []
+
+async def delete_current_screen(chat_id: int, uid: int):
+    st = STATE.setdefault(uid, {"screen_id": None, "album_msg_ids": []})
+    sid = st.get("screen_id")
+    if sid:
+        try:
+            await client.delete_messages(chat_id, sid, revoke=True)
+        except Exception:
+            pass
+        st["screen_id"] = None
+
+# ---- sticky notifications cleanup -----------------------------------------
+
+# такой же префикс использует personal_matcher
+NOTIFY_PREFIX = "✨ Для вас появились новые подходящие кастинги."
+
+def _is_notify_message(msg) -> bool:
+    """Распознаём наше уведомление (текст + кнопка 'ок')."""
+    try:
+        txt = (msg.raw_text or "").strip()
+        if txt.startswith(NOTIFY_PREFIX):
+            return True
+
+        # кнопка 'ок' или callback data == b'notif_ok'
+        btns = getattr(msg, "buttons", None)
+        if btns:
+            for row in btns:
+                for b in row:
+                    label = (getattr(b, "text", "") or "").lower()
+                    data  = getattr(b, "data", b"") or b""
+                    if label in ("ок", "ok") or data == b"notif_ok":
+                        return True
+        return False
+    except Exception:
+        return False
+
 
 async def clear_tmp_msgs(chat_id: int, uid: int):
     ids = TMP_MSGS.pop(uid, [])
@@ -485,44 +805,191 @@ async def advance_or_finish(uid: int, chat_id: int):
         upsert_user(uid, to_save)
         u = get_user(uid)
 
+        # убрать текущий экран мастера, если ещё висит
         try:
             if st.get("screen_id"):
                 await client.delete_messages(chat_id, st["screen_id"])
         except Exception:
             pass
 
+        # подчистить времянки и залипшие уведомления
         await clear_tmp_msgs(chat_id, uid)
+        await clear_sticky_notices(chat_id, uid)
 
-        # Полностью сбросим состояние мастера
+        # полностью сбросить состояние мастера
         STATE.pop(uid, None)
 
+        # показать профиль
         await show_profile_screen(uid, chat_id, u, reposition=True)
         return
 
-    # --- дальше твоя логика как была ---
+    # --- обычное продвижение по мастеру ---
     scope = st.get("scope")  # None | "form" | "photos"
     while st["step"] < len(STEPS) and not step_in_scope(STEPS[st["step"]], scope):
         st["step"] += 1
+
+    # если дошли до конца — сохраняем и выходим на профиль
     if st["step"] >= len(STEPS):
         old = get_user(uid) or {}
         to_save = {**old, **st["answers"]}
         upsert_user(uid, to_save)
         u = get_user(uid)
+
         try:
             if st.get("screen_id"):
                 await client.delete_messages(chat_id, st["screen_id"])
         except Exception:
             pass
+
         await clear_tmp_msgs(chat_id, uid)
+        await clear_sticky_notices(chat_id, uid)
+
         STATE.pop(uid, None)
         await show_profile_screen(uid, chat_id, u, reposition=True)
         return
 
+    # перед отрисовкой следующего шага тоже сносим залипшие уведомления
+    await clear_sticky_notices(chat_id, uid)
     await render_step(uid, chat_id)
+
+import tempfile
+from telethon.tl.types import Message as TgMessage
+
+async def _download_media_files(msgs: list[TgMessage]) -> list[str]:
+    """Скачивает медиа из сообщений во временную папку и возвращает пути."""
+    paths = []
+    for m in msgs or []:
+        if getattr(m, "media", None):
+            try:
+                p = await client.download_media(m, file=tempfile.gettempdir())
+                if p:
+                    paths.append(p)
+            except Exception:
+                pass
+    return paths
+
+def _extract_original_text(msgs: list[TgMessage], fallback: str = "") -> str:
+    """
+    Берём оригинальный текст/подпись из первого сообщения альбома/поста.
+    Если пусто — используем fallback (text_cache из matches).
+    """
+    if msgs:
+        t = (msgs[0].raw_text or "").strip()
+        if t:
+            return t
+    return fallback or " "
+
+def _is_webapp_msg(msg) -> bool:
+    try:
+        # 1) по callback-кнопке "webapp_back"
+        btns = getattr(msg, "buttons", None)
+        if btns:
+            for row in btns:
+                for b in row:
+                    if getattr(b, "data", b"") == b"webapp_back":
+                        return True
+        # 2) по заголовку (на случай отсутствия кнопок в объекте)
+        t = (msg.raw_text or "").strip()
+        if t.startswith("⚡ *Подключение тарифа*") or t.startswith("⚡ Подключение тарифа"):
+            return True
+    except Exception:
+        pass
+    return False
+
+async def cleanup_webapp_leftovers(chat_id: int, limit: int = 50):
+    """Снести все старые webapp-сообщения в чате, даже если STATE пуст."""
+    try:
+        msgs = await client.get_messages(chat_id, limit=limit)
+        to_del = [m.id for m in msgs if _is_webapp_msg(m)]
+        if to_del:
+            await client.delete_messages(chat_id, to_del, revoke=True)
+    except Exception:
+        pass
 
 # --- CLIENT -----------------------------------------------------------------
 
 client = TelegramClient("user_reg_bot", API_ID, API_HASH).start(bot_token=BOT_TOKEN)
+
+# ------- CONSENT handlers ---------------------------------------------------
+
+@client.on(events.CallbackQuery(pattern=b"^consent_ok:"))
+async def consent_ok(ev: events.CallbackQuery.Event):
+    uid = ev.sender_id
+    raw = ev.data.decode("utf-8", errors="ignore")
+    _, action = raw.split(":", 1)
+    store_consent(uid)
+    # после принятия — выполнить запрошенное действие
+    if action == "start_form_or_profile":
+        await start_form_or_profile(ev)
+    elif action == "my_profile":
+        await my_profile(ev)
+    elif action == "view_castings":
+        await view_castings(ev)
+    elif action == "open_tariff":
+        await open_tariff(ev)
+
+@client.on(events.CallbackQuery(data=b"consent_cancel"))
+async def consent_cancel(ev: events.CallbackQuery.Event):
+    # Просто вернём главное меню
+    await render_menu(ev.chat_id, ev.sender_id)
+
+@client.on(events.CallbackQuery(data=b"open_tariff"))
+async def open_tariff(ev: events.CallbackQuery.Event):
+    # 🔒 перед действием — проверка согласия
+    if await guard_consent(ev, "open_tariff"):
+        return
+
+    uid = ev.sender_id
+    chat_id = ev.chat_id
+    st = STATE.setdefault(uid, {"screen_id": None, "album_msg_ids": []})
+
+    try:
+        await ev.delete()
+    except Exception:
+        pass
+
+    if st.get("busy"):
+        return
+    st["busy"] = True
+    try:
+        await delete_current_screen(chat_id, uid)
+        await delete_album(chat_id, uid)
+        await clear_tmp_msgs(chat_id, uid)
+        await clear_sticky_notices(ev.chat_id, uid, except_id=getattr(ev, "message_id", None))
+        await cleanup_webapp_leftovers(ev.chat_id)
+        prev_mid = st.pop("webapp_msg_id", None)
+        if prev_mid:
+            await botapi_delete_message(chat_id, prev_mid)
+
+        kb = {
+            "inline_keyboard": [
+                [{ "text": "⚡ Подключить тариф", "web_app": { "url": WEBAPP_URL } }],
+                [{ "text": "⬅️ Назад", "callback_data": "webapp_back" }]
+            ]
+        }
+        text = "⚡ *Подключение тарифа*\n\nОткрой мини-приложение, затем вернись «Назад»."
+        mid = await botapi_send_message(chat_id, text, kb)
+        if mid:
+            st["webapp_msg_id"] = mid
+    finally:
+        st["busy"] = False
+
+@client.on(events.CallbackQuery(data=b"webapp_back"))
+async def webapp_back(ev):
+    uid, chat_id = ev.sender_id, ev.chat_id
+    # сразу редактируем то же сообщение
+    await client.edit_message(
+        chat_id, ev.message_id,
+        WELCOME,
+        buttons=[
+            [Button.inline("📝 Попасть в базу (5 мин)", b"start_form_or_profile")],
+            [Button.inline("📇 Моя анкета", b"my_profile")],
+            [Button.inline("📰 Смотреть кастинги", b"view_castings")],
+            [Button.inline("⚡ Подключить ИИ кастинг-агента", b"open_tariff")],
+        ],
+        link_preview=False, parse_mode="markdown",
+    )
+    STATE.setdefault(uid, {})["screen_id"] = ev.message_id
 
 # /start -> главное меню (один экран)
 @client.on(events.NewMessage(pattern=r"^/start$"))
@@ -535,6 +1002,13 @@ async def start_menu(ev: events.NewMessage.Event):
     try:
         await delete_album(ev.chat_id, uid)
         await clear_tmp_msgs(ev.chat_id, uid)
+        await clear_sticky_notices(ev.chat_id, uid, except_id=getattr(ev, "message_id", None))
+        await cleanup_webapp_leftovers(ev.chat_id)
+        mid = st.get("webapp_msg_id")
+        if mid:
+            await botapi_delete_message(ev.chat_id, mid)
+            st["webapp_msg_id"] = None
+        await delete_current_screen(ev.chat_id, uid)
         await render_menu(ev.chat_id, uid)
     finally:
         st["busy"] = False
@@ -544,6 +1018,10 @@ async def answer_choice(ev: events.CallbackQuery.Event):
     uid = ev.sender_id
     chat_id = ev.chat_id
     st = STATE.setdefault(uid, {"screen_id": None, "album_msg_ids": []})
+
+    # 🧹 подчистим уведомления перед обработкой ответа
+    await clear_sticky_notices(chat_id, uid, except_id=getattr(ev, "message_id", None))
+
     if st.get("busy"):
         return
     st["busy"] = True
@@ -568,7 +1046,10 @@ async def answer_choice(ev: events.CallbackQuery.Event):
 @client.on(events.CallbackQuery(data=b"home"))
 async def go_home(ev: events.CallbackQuery.Event):
     uid = ev.sender_id
+    chat_id = ev.chat_id
     st = STATE.setdefault(uid, {"screen_id": None, "album_msg_ids": []})
+
+    # удаляем само сообщение с нажатой кнопкой (если ещё есть)
     try:
         await ev.delete()
     except Exception:
@@ -579,9 +1060,19 @@ async def go_home(ev: events.CallbackQuery.Event):
         return
     st["busy"] = True
     try:
-        await delete_album(ev.chat_id, uid)
-        await clear_tmp_msgs(ev.chat_id, uid)
-        await render_menu(ev.chat_id, uid)
+        # на всякий добьём хвосты из мастера
+        await delete_album(chat_id, uid)
+        await clear_tmp_msgs(chat_id, uid)
+        await clear_sticky_notices(chat_id, uid, except_id=getattr(ev, "message_id", None))
+        await cleanup_webapp_leftovers(ev.chat_id)
+        mid = st.get("webapp_msg_id")
+        if mid:
+            try:
+                await botapi_delete_message(chat_id, mid)
+            finally:
+                st["webapp_msg_id"] = None
+        await delete_current_screen(ev.chat_id, uid)
+        await render_menu(chat_id, uid)
     finally:
         st["busy"] = False
 
@@ -590,6 +1081,10 @@ async def toggle_multi(ev: events.CallbackQuery.Event):
     uid = ev.sender_id
     chat_id = ev.chat_id
     st = STATE.setdefault(uid, {"screen_id": None, "album_msg_ids": []})
+
+    # 🧹 подчистим уведомления, кроме текущего сообщения
+    await clear_sticky_notices(chat_id, uid, except_id=getattr(ev, "message_id", None))
+
     if st.get("busy"):
         return
     st["busy"] = True
@@ -648,6 +1143,10 @@ async def done_multi(ev: events.CallbackQuery.Event):
         return
     st["busy"] = True
     try:
+        # 🧹 Сначала подчистим уведомления
+        except_id = ev.message.id if getattr(ev, "message", None) else None
+        await clear_sticky_notices(chat_id, uid, except_id=except_id)
+
         if "step" not in st:
             return
         i = st["step"]
@@ -699,7 +1198,9 @@ async def edit_profile(ev: events.CallbackQuery.Event):
         return
     st["busy"] = True
     try:
+        # подчистим уведомления и временные сообщения
         await clear_tmp_msgs(chat_id, uid)
+        await clear_sticky_notices(chat_id, uid, except_id=getattr(ev, "message_id", None))
 
         # Уже внутри мастера — ничего не перерисовываем
         if "step" in st and "answers" in st:
@@ -737,6 +1238,7 @@ async def edit_form(ev: events.CallbackQuery.Event):
         if not u:
             await delete_album(chat_id, uid)
             await clear_tmp_msgs(chat_id, uid)
+            await clear_sticky_notices(chat_id, uid, except_id=getattr(ev, "message_id", None))
             STATE[uid].update({"step": 0, "answers": {}, "scope": None})
             await render_step(uid, chat_id)
             return
@@ -776,6 +1278,7 @@ async def edit_photos(ev: events.CallbackQuery.Event):
         if not u:
             await delete_album(chat_id, uid)
             await clear_tmp_msgs(chat_id, uid)
+            await clear_sticky_notices(chat_id, uid, except_id=getattr(ev, "message_id", None))
             STATE[uid].update({"step": 0, "answers": {}, "scope": None})
             await render_step(uid, chat_id)
             return
@@ -792,6 +1295,10 @@ async def edit_photos(ev: events.CallbackQuery.Event):
 
 @client.on(events.CallbackQuery(data=b"start_form_or_profile"))
 async def start_form_or_profile(ev: events.CallbackQuery.Event):
+    # 🔒 перед действием — проверка согласия
+    if await guard_consent(ev, "start_form_or_profile"):
+        return
+
     uid = ev.sender_id
     chat_id = ev.chat_id
     st = STATE.setdefault(uid, {"screen_id": None, "album_msg_ids": []})
@@ -808,13 +1315,16 @@ async def start_form_or_profile(ev: events.CallbackQuery.Event):
     st["busy"] = True
     try:
         u = get_user(uid)
+
+        # подчистка хвостов
+        await delete_album(chat_id, uid)
         await clear_tmp_msgs(chat_id, uid)
+        await clear_sticky_notices(chat_id, uid, except_id=getattr(ev, "message_id", None))
 
         if u:
             # показываем профиль одним экраном, можно сбросить альбом после рестарта
             await show_profile_screen(uid, chat_id, u, reposition=True, reset_album=False)
         else:
-            await delete_album(chat_id, uid)
             STATE[uid].update({"step": 0, "answers": {}, "scope": None})
             await render_step(uid, chat_id)
     finally:
@@ -822,10 +1332,15 @@ async def start_form_or_profile(ev: events.CallbackQuery.Event):
 
 @client.on(events.CallbackQuery(data=b"my_profile"))
 async def my_profile(ev: events.CallbackQuery.Event):
+    # 🔒 перед действием — проверка согласия
+    if await guard_consent(ev, "my_profile"):
+        return
+
     uid = ev.sender_id
     chat_id = ev.chat_id
     st = STATE.setdefault(uid, {"screen_id": None, "album_msg_ids": []})
 
+    # удаляем сообщение, из которого пришёл клик
     try:
         await ev.delete()
     except Exception:
@@ -837,14 +1352,154 @@ async def my_profile(ev: events.CallbackQuery.Event):
     st["busy"] = True
     try:
         u = get_user(uid)
+
+        # подчистка хвостов
+        await delete_album(chat_id, uid)
         await clear_tmp_msgs(chat_id, uid)
+        await clear_sticky_notices(chat_id, uid, except_id=getattr(ev, "message_id", None))
 
         if not u:
-            await delete_album(chat_id, uid)
             STATE[uid].update({"step": 0, "answers": {}, "scope": None})
             await render_step(uid, chat_id)
         else:
             await show_profile_screen(uid, chat_id, u, reposition=True, reset_album=False)
+    finally:
+        st["busy"] = False
+
+@client.on(events.CallbackQuery(data=b"view_castings"))
+async def view_castings(ev: events.CallbackQuery.Event):
+    # 🔒 перед действием — проверка согласия
+    if await guard_consent(ev, "view_castings"):
+        return
+
+    uid = ev.sender_id
+    chat_id = ev.chat_id
+    st = STATE.setdefault(uid, {"screen_id": None, "album_msg_ids": []})
+
+    # удаляем само уведомление с кнопкой
+    try:
+        await ev.delete()
+    except Exception:
+        pass
+
+    # подчистим ВСЕ старые уведомления (кроме того, что мы только что удалили)
+    await clear_sticky_notices(chat_id, uid, except_id=getattr(ev, "message_id", None))
+
+    # подчистим всё, что могло висеть
+    await delete_current_screen(chat_id, uid)
+    await delete_album(chat_id, uid)
+    await clear_tmp_msgs(chat_id, uid)
+
+    if st.get("busy"):
+        return
+    st["busy"] = True
+    try:
+        matches = get_user_matches(uid)   # <= твоя функция из utils.py
+        for it in matches:
+            it.setdefault("source_chat", None)
+            it.setdefault("message_ids", [])
+            it.setdefault("text_cache", "")
+
+        st["cast_items"] = matches
+        st["cast_idx"] = 0
+
+        if not matches:
+            # если нет — покажем заглушку
+            txt = "Пока подходящих объявлений нет. Как только появятся — я уведомлю!"
+            await render_text(uid, chat_id, txt, buttons=[
+                [Button.inline("⬅️ Назад", b"back")],
+                [Button.inline("🏠 Главное меню", b"home")]
+            ])
+            return
+
+        await _render_match_view(uid, chat_id, matches[0], pos=1, total=len(matches))
+    finally:
+        st["busy"] = False
+
+
+@client.on(events.CallbackQuery(data=b"cast_next"))
+async def cast_next(ev: events.CallbackQuery.Event):
+    uid = ev.sender_id
+    chat_id = ev.chat_id
+    st = STATE.setdefault(uid, {"screen_id": None})
+
+    # убираем сообщение, из которого кликнули
+    try:
+        await ev.delete()
+    except Exception:
+        pass
+    st["screen_id"] = None
+
+    # подметаем залипшие уведомления (кроме только что нажатого)
+    await clear_sticky_notices(chat_id, uid, except_id=getattr(ev, "message_id", None))
+
+    if st.get("busy"):
+        return
+    st["busy"] = True
+    try:
+        items = st.get("cast_items") or []
+        if not items:
+            await render_text(
+                uid,
+                chat_id,
+                "Пока подходящих объявлений нет. Как только появятся — я уведомлю!",
+                buttons=[
+                    [Button.inline("⬅️ Назад", b"back")],
+                    [Button.inline("🏠 Главное меню", b"home")],
+                ],
+            )
+            return
+
+        # шаг вперёд по кольцу
+        idx = (st.get("cast_idx", 0) + 1) % len(items)
+        st["cast_idx"] = idx
+
+        # рендер текущего матча
+        match = items[idx]
+        await _render_match_view(uid, chat_id, match, pos=idx + 1, total=len(items))
+    finally:
+        st["busy"] = False
+
+@client.on(events.CallbackQuery(data=b"cast_prev"))
+async def cast_prev(ev: events.CallbackQuery.Event):
+    uid = ev.sender_id
+    chat_id = ev.chat_id
+    st = STATE.setdefault(uid, {"screen_id": None})
+
+    # убираем кнопку, с которой пришёл клик
+    try:
+        await ev.delete()
+    except Exception:
+        pass
+    st["screen_id"] = None
+
+    # подметаем залипшие уведомления (кроме только что нажатого)
+    await clear_sticky_notices(chat_id, uid, except_id=getattr(ev, "message_id", None))
+
+    if st.get("busy"):
+        return
+    st["busy"] = True
+    try:
+        items = st.get("cast_items") or []
+        if not items:
+            await render_text(
+                uid,
+                chat_id,
+                "Пока подходящих объявлений нет. Как только появятся — я уведомлю!",
+                buttons=[
+                    [Button.inline("⬅️ Назад", b"back")],
+                    [Button.inline("🏠 Главное меню", b"home")],
+                ],
+            )
+            return
+
+        # шаг назад по кольцу
+        idx = (st.get("cast_idx", 0) - 1) % len(items)
+        st["cast_idx"] = idx
+
+        # рендер текущего матча
+        match = items[idx]
+        await _render_match_view(uid, chat_id, match, pos=idx + 1, total=len(items))
     finally:
         st["busy"] = False
 
@@ -854,27 +1509,68 @@ async def go_back(ev: events.CallbackQuery.Event):
     chat_id = ev.chat_id
     st = STATE.setdefault(uid, {"screen_id": None, "album_msg_ids": []})
 
+    # Удаляем сообщение, по кнопке из которого пришли
     try:
         await ev.delete()
     except Exception:
         pass
-    st["screen_id"] = None
 
     if st.get("busy"):
         return
     st["busy"] = True
     try:
+        # 1) Сначала снесём webapp-экран, если он ещё висит (по id из STATE)
+        mid = st.get("webapp_msg_id")
+        if mid:
+            ok = await botapi_delete_message(chat_id, mid)
+            if ok:
+                st["webapp_msg_id"] = None
+
+        # 1a) На случай рестарта процесса: подчистим ВСЕ "висячие" webapp-сообщения
+        #     (те, у которых есть кнопка с callback_data == webapp_back, либо характерный заголовок)
+        async def _cleanup_webapp_leftovers():
+            try:
+                def _is_webapp_msg_local(msg) -> bool:
+                    try:
+                        # по кнопке "Назад" из webapp
+                        btns = getattr(msg, "buttons", None)
+                        if btns:
+                            for row in btns:
+                                for b in row:
+                                    if getattr(b, "data", b"") == b"webapp_back":
+                                        return True
+                        # по заголовку
+                        t = (msg.raw_text or "").strip()
+                        if t.startswith("⚡ *Подключение тарифа*") or t.startswith("⚡ Подключение тарифа"):
+                            return True
+                    except Exception:
+                        pass
+                    return False
+
+                recent = await client.get_messages(chat_id, limit=50)
+                to_del = [m.id for m in recent if _is_webapp_msg_local(m)]
+                if to_del:
+                    await client.delete_messages(chat_id, to_del, revoke=True)
+            except Exception:
+                pass
+
+        await _cleanup_webapp_leftovers()
+
+        # 2) Снесём «текущий экран» (если мы его рендерили Telethon'ом)
+        await delete_current_screen(chat_id, uid)
+
         async def show_single_screen():
             await clear_tmp_msgs(chat_id, uid)
             u = get_user(uid)
             if not u:
                 await delete_album(chat_id, uid)
+                await clear_sticky_notices(chat_id, uid, except_id=getattr(ev, "message_id", None))
                 STATE[uid].update({"step": 0, "answers": {}, "scope": None})
                 await render_step(uid, chat_id)
                 return
             await show_profile_screen(uid, chat_id, u, reposition=True, edit_mode=False, reset_album=True)
 
-        # мастер не активен — единый экран
+        # если мастер не активен — показываем единый экран
         if "step" not in st or "answers" not in st:
             await show_single_screen()
             return
@@ -882,10 +1578,8 @@ async def go_back(ev: events.CallbackQuery.Event):
         i = st["step"]
         scope = st.get("scope")
 
-        # <<< ВАЖНО: если это первый шаг в режиме редактирования (scope),
-        #            то возвращаемся в меню "Что хотите изменить?"
+        # первый шаг в режиме редактирования → назад в меню «Что хотите изменить?»
         if i <= 0:
-            # чистим состояние мастера
             st.pop("step", None)
             st.pop("answers", None)
 
@@ -895,12 +1589,10 @@ async def go_back(ev: events.CallbackQuery.Event):
                 if u:
                     await show_profile_screen(uid, chat_id, u, reposition=True, edit_mode=True, reset_album=False)
                 else:
-                    # на всякий — если профиля нет, запускаем мастер с нуля
                     STATE[uid].update({"step": 0, "answers": {}, "scope": None})
                     await render_step(uid, chat_id)
                 return
 
-            # без scope — как раньше: единый экран
             await show_single_screen()
             return
 
@@ -952,6 +1644,9 @@ async def edit_single_field(ev: events.CallbackQuery.Event):
         pass
     st["screen_id"] = None
 
+    # 🧹 подчистим уведомления (кроме того, из которого кликнули)
+    await clear_sticky_notices(chat_id, uid, except_id=getattr(ev, "message_id", None))
+
     if st.get("busy"):
         return
     st["busy"] = True
@@ -959,6 +1654,7 @@ async def edit_single_field(ev: events.CallbackQuery.Event):
         u = get_user(uid)
         if not u:
             await delete_album(chat_id, uid)
+            await clear_tmp_msgs(chat_id, uid)
             STATE[uid].update({"step": 0, "answers": {}, "scope": None})
             await render_step(uid, chat_id)
             return
@@ -981,13 +1677,21 @@ async def edit_single_field(ev: events.CallbackQuery.Event):
     finally:
         st["busy"] = False
 
+@client.on(events.CallbackQuery(data=b"notif_ok"))
+async def notif_ok(ev: events.CallbackQuery.Event):
+    # просто убрать сообщение-уведомление
+    try:
+        await ev.delete()
+    except Exception:
+        pass
+
 @client.on(events.CallbackQuery(data=b"cancel"))
 async def go_cancel(ev: events.CallbackQuery.Event):
     uid = ev.sender_id
     chat_id = ev.chat_id
     st = STATE.setdefault(uid, {"screen_id": None, "album_msg_ids": []})
 
-    # 1) удалить сообщение, из которого пришёл клик (важно после рестарта)
+    # 1) удалить сообщение, из которого пришёл клик (если ещё есть)
     try:
         await ev.delete()
     except Exception:
@@ -998,15 +1702,18 @@ async def go_cancel(ev: events.CallbackQuery.Event):
         return
     st["busy"] = True
     try:
-        # 2) подчистить альбом и временные подсказки
+        # 2) подчистить альбом, временные подсказки и залипшие уведомления
         await delete_album(chat_id, uid)
         await clear_tmp_msgs(chat_id, uid)
+        # id кликнутого сообщения (если есть), чтобы не пытаться удалить его второй раз
+        except_id = ev.message.id if getattr(ev, "message", None) else None
+        await clear_sticky_notices(chat_id, uid, except_id=except_id)
 
         # 3) сбросить состояние мастера
         st.pop("step", None)
         st.pop("answers", None)
 
-        # 4) показать главное меню (одним окном)
+        # 4) показать главное меню
         await render_menu(chat_id, uid)
     finally:
         st["busy"] = False
@@ -1183,6 +1890,8 @@ async def show_profile_screen(
     txt = "📇 **Твоя анкета:**\n\n" + format_summary(u)
     buttons = [
         [Button.inline("✏️ Редактировать", b"edit_profile")],
+        [Button.inline("📰 Смотреть кастинги", b"view_castings")],
+        [Button.inline("⚡ Подключить тариф", b"open_tariff")],
         [Button.inline("🏠 Главное меню", b"home")],
     ]
     await render_text(uid, chat_id, txt, buttons=buttons)

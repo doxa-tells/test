@@ -21,6 +21,8 @@ import sqlite3
 import json
 import base64
 import aiohttp  # для HTTP-вызовов Bot API
+import hmac, hashlib, time
+import urllib.parse as up
 from telethon import types
 from datetime import datetime
 from pathlib import Path
@@ -62,6 +64,8 @@ API_ID    = _getenv("API_ID",   required=True, cast=int)
 API_HASH  = _getenv("API_HASH", required=True)
 BOT_TOKEN = _getenv("BOT_TOKEN", required=True)
 WEBAPP_URL = _getenv("WEBAPP_URL", required=True)
+# [ADD] Необязательный секрет для подписи ссылки мини-аппы
+WEBAPP_SIGNING_SECRET = _getenv("WEBAPP_SIGNING_SECRET", required=False)
 
 # --- STORAGE ----------------------------------------------------------------
 
@@ -79,6 +83,8 @@ def media_path(user_id: int, slot: int) -> Path:
 def init_db():
     con = sqlite3.connect(DB_PATH)
     cur = con.cursor()
+
+    # --- анкеты пользователей ---
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS users (
@@ -112,6 +118,7 @@ def init_db():
         )
         """
     )
+
     # --- таблица подходящих кастингов (matches) ---
     cur.execute(
         """
@@ -126,6 +133,7 @@ def init_db():
         )
         """
     )
+
     # --- согласие с офертой/политикой (персистентный флаг) ---
     cur.execute(
         """
@@ -135,17 +143,31 @@ def init_db():
         )
         """
     )
+
+    # --- статус подписки (active/inactive) ---
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS subs (
+            user_id   INTEGER PRIMARY KEY,
+            status    TEXT NOT NULL CHECK(status IN ('active','inactive')),
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+
     # индексы
     try:
         cur.execute("CREATE INDEX IF NOT EXISTS idx_matches_user_created ON matches(user_id, created_at DESC)")
     except Exception:
         pass
-    # миграция на случай старой базы
+
+    # миграция на случай старой базы (добавляем TG-ссылки для фото, если их не было)
     for col in ("photo1_tg","photo2_tg","photo3_tg","photo4_tg"):
         try:
             cur.execute(f"ALTER TABLE users ADD COLUMN {col} TEXT")
         except Exception:
             pass
+
     con.commit()
     con.close()
 
@@ -206,6 +228,44 @@ def store_consent(uid: int):
     )
     con.commit()
     con.close()
+
+# ---- подписка: хелперы -----------------------------------------------------
+
+def get_sub_status(uid: int) -> str:
+    con = sqlite3.connect(DB_PATH); cur = con.cursor()
+    cur.execute("SELECT status FROM subs WHERE user_id=?", (uid,))
+    row = cur.fetchone()
+    con.close()
+    return (row[0] if row else "inactive")
+
+def set_sub_status(uid: int, status: str):
+    status = "active" if status == "active" else "inactive"
+    con = sqlite3.connect(DB_PATH); cur = con.cursor()
+    cur.execute(
+        "INSERT INTO subs(user_id, status, updated_at) VALUES(?, ?, ?) "
+        "ON CONFLICT(user_id) DO UPDATE SET status=excluded.status, updated_at=excluded.updated_at",
+        (uid, status, datetime.utcnow().isoformat())
+    )
+    con.commit(); con.close()
+
+def is_sub_active(uid: int) -> bool:
+    return get_sub_status(uid) == "active"
+
+def build_webapp_url(uid: int) -> str:
+    """
+    Добавляем к WEBAPP_URL параметры: uid, ts и подпись sig (если есть секрет),
+    чтобы мини-аппа могла верифицировать запрос.
+    """
+    base = WEBAPP_URL
+    ts = str(int(time.time()))
+    q = {"uid": str(uid), "ts": ts}
+    if WEBAPP_SIGNING_SECRET:
+        msg = f"{uid}:{ts}".encode("utf-8")
+        key = WEBAPP_SIGNING_SECRET.encode("utf-8")
+        sig = hmac.new(key, msg, hashlib.sha256).hexdigest()
+        q["sig"] = sig
+    sep = "&" if ("?" in base) else "?"
+    return base + sep + up.urlencode(q)
 
 CONSENT_TEXT = (
     "🔐 **Согласие с условиями**\n\n"
@@ -457,13 +517,15 @@ async def render_text(uid: int, chat_id: int, text: str, buttons=None):
         st["screen_id"] = msg.id
 
 async def render_menu(chat_id: int, uid: int):
+    active = is_sub_active(uid)
+    tariff_label = "⚡ Подключить ИИ кастинг-агента" if not active else "🟢 ИИ кастинг-агент активен"
     await render_text(
         uid, chat_id, WELCOME,
         buttons=[
             [Button.inline("📝 Попасть в базу (5 мин)", b"start_form_or_profile")],
             [Button.inline("📇 Моя анкета", b"my_profile")],
             [Button.inline("📰 Смотреть кастинги", b"view_castings")],
-            [Button.inline("⚡ Подключить ИИ кастинг-агента", b"open_tariff")],
+            [Button.inline(tariff_label, b"open_tariff")],
         ],
     )
 
@@ -957,13 +1019,17 @@ async def open_tariff(ev: events.CallbackQuery.Event):
         await clear_tmp_msgs(chat_id, uid)
         await clear_sticky_notices(ev.chat_id, uid, except_id=getattr(ev, "message_id", None))
         await cleanup_webapp_leftovers(ev.chat_id)
+
         prev_mid = st.pop("webapp_msg_id", None)
         if prev_mid:
             await botapi_delete_message(chat_id, prev_mid)
 
+        # ✅ главное изменение: собираем URL мини-аппы с прокидкой uid (и, при необходимости, подписью)
+        url = build_webapp_url(uid)
+
         kb = {
             "inline_keyboard": [
-                [{ "text": "⚡ Подключить тариф", "web_app": { "url": WEBAPP_URL } }],
+                [{ "text": "⚡ Подключить тариф", "web_app": { "url": url } }],
                 [{ "text": "⬅️ Назад", "callback_data": "webapp_back" }]
             ]
         }
@@ -1375,6 +1441,48 @@ async def view_castings(ev: events.CallbackQuery.Event):
     uid = ev.sender_id
     chat_id = ev.chat_id
     st = STATE.setdefault(uid, {"screen_id": None, "album_msg_ids": []})
+
+    # 🔐 ЗАМОК: пропускаем дальше только с активной подпиской
+    def _is_sub_active(user_id: int) -> bool:
+        try:
+            con = sqlite3.connect(DB_PATH)
+            cur = con.cursor()
+            cur.execute("SELECT status FROM subs WHERE user_id=?", (user_id,))
+            row = cur.fetchone()
+            return bool(row and (row[0] or "").lower() == "active")
+        except Exception as e:
+            print("subs check error:", e)
+            return False
+        finally:
+            try:
+                con.close()
+            except Exception:
+                pass
+
+    if not _is_sub_active(uid):
+        # При неактивной подписке показываем экран подключения тарифа и выходим
+        try:
+            await ev.delete()
+        except Exception:
+            pass
+        await delete_current_screen(chat_id, uid)
+        await delete_album(chat_id, uid)
+        await clear_tmp_msgs(chat_id, uid)
+        await clear_sticky_notices(chat_id, uid, except_id=getattr(ev, "message_id", None))
+
+        txt = (
+            "🔒 *Раздел «Смотреть кастинги» доступен с активной подпиской.*\n\n"
+            "Подключите ИИ-кастинг-агента, чтобы получать **только подходящие** объявления "
+            "и откликаться в один клик."
+        )
+        await render_text(uid, chat_id, txt, buttons=[
+            [Button.inline("⚡ Подключить ИИ кастинг-агента", b"open_tariff")],
+            [Button.inline("⬅️ Назад", b"back")],
+            [Button.inline("🏠 Главное меню", b"home")],
+        ])
+        return
+
+    # --- дальше идёт твоя логика показа кастингов (без изменений) ---
 
     # удаляем само уведомление с кнопкой
     try:

@@ -7,7 +7,7 @@
   <meta name="description" content="Roletapp AI — ИИ-кастинг агент: собирает 10/10 кастингов РК, фильтрует спам и дубли, проверяет соответствие профилю и шлёт уведомления." />
   <style>
     :root{
-      --bg:#0b1020; /* один статичный цвет фона */
+      --bg:#0b1020;
       --txt:#EAF0FF; --muted:#a9b6dd;
       --panel:#0f1330; --panel2:#10183a; --badge:#121a42; --ok:#19e3a6;
       --glow:#61E4B5; --halo:#7AA8FF;
@@ -16,7 +16,6 @@
       --wrap:1120px;
     }
 
-    /* base */
     html,body{height:100%}
     *{box-sizing:border-box}
     body{
@@ -26,19 +25,17 @@
       -webkit-font-smoothing:antialiased;
       line-height:1.55;
       overflow-y:auto;
-      background:var(--bg); /* статичный фон */
+      background:var(--bg);
       scroll-snap-type:y mandatory;
     }
     @media (prefers-reduced-motion:no-preference){ html{scroll-behavior:smooth} }
     a{color:inherit;text-decoration:none}
 
-    /* статичный фон-слой */
     .flow-bg{
       position:fixed; inset:0; z-index:-3; overflow:hidden;
       background:var(--bg);
     }
 
-    /* тонкая неоновая сетка для глубины */
     .grid-overlay{
       position:fixed; inset:0; z-index:-2; pointer-events:none;
       background-image:
@@ -47,26 +44,22 @@
       background-size:60px 60px;
       mask-image:radial-gradient(80% 70% at 50% 40%, #000 65%, transparent 100%);
     }
-    /* лёгкая «зернистость» */
     .grain{
       position:fixed; inset:0; z-index:-1; pointer-events:none; opacity:.08; mix-blend-mode:soft-light;
       background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' opacity='1'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='3'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
     }
 
-    /* LAYOUT */
     .wrap{max-width:var(--wrap); margin:0 auto; padding:24px; position:relative}
     .slide{
-      min-height:auto; padding:0; position:relative; /* мобильный вид без лишних отступов */
+      min-height:auto; padding:0; position:relative;
       scroll-snap-align:start; scroll-snap-stop:always;
     }
-    /* ДЕСКТОП: компактные секции вместо 100vh, контролируемые отступы */
     @media (min-width:1024px){
       body{scroll-snap-type:none;}
       .slide{min-height:auto; padding:38px 0;}
       .wrap{padding:28px;}
     }
 
-    /* Карточки / стекло */
     .panel{
       background:color-mix(in oklab, var(--panel) 88%, transparent);
       border:1px solid rgba(255,255,255,.08);
@@ -80,14 +73,13 @@
       border-radius:14px; padding:16px 14px;
     }
 
-    /* Типографика */
     h1{font-size:36px;line-height:1.12;margin:0 0 12px; letter-spacing:.2px}
     h2{font-size:28px;margin:0 0 14px}
     h3{font-size:18px;margin:0 0 8px}
     p{color:var(--muted);margin:0}
     @media (min-width:760px){ h1{font-size:52px} h2{font-size:32px} }
 
-    .kicker{color:var(--glow);font-weight:800;letter-spacing:.02ем;margin-bottom:10px;text-transform:uppercase;font-size:12px}
+    .kicker{color:var(--glow);font-weight:800;letter-spacing:.02em;margin-bottom:10px;text-transform:uppercase;font-size:12px}
 
     .badges{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
     .badge{background:var(--badge);color:#cfe0ff;border:1px solid rgba(255,255,255,.08);padding:8px 10px;border-radius:999px;font-size:12px;display:flex;gap:8px;align-items:center;backdrop-filter:blur(3px);transition:transform .25s ease, box-shadow .25s ease}
@@ -100,10 +92,8 @@
       box-shadow:0 10px 22px rgba(122,168,255,.35);
       transition:transform .2s ease, box-shadow .2s ease, filter .2s ease;
     }
-    /* === Ровные пропорции кнопок в герое и в нижней панели === */
     .cta .btn{flex:1 1 0}
     .stickybar .bar .btn{flex:1 1 0}
-    /* ======================================================== */
 
     .btn:hover{box-shadow:0 16px 32px rgba(122,168,255,.45)}
     .btn:active{transform:translateY(1px)}
@@ -134,7 +124,6 @@
     .bullet .t{flex:1}
     .plans{display:grid;gap:12px}
 
-    /* HERO */
     .hero-grid{display:grid;gap:14px;grid-template-columns:1fr}
     .hero-card{padding:22px 18px 18px}
 
@@ -153,9 +142,8 @@
     }
     .hero-art:hover img{transform:translateZ(20px) translateY(-2px)}
 
-    /* ДЕСКТОПНЫЙ расклад хиро без изменения HTML */
     @media (min-width:1024px){
-      .hero-grid{grid-template-columns:1fr} /* контейнер как есть */
+      .hero-grid{grid-template-columns:1fr}
       .hero-card{
         display:grid;
         grid-template-columns:1.1fr .9fr;
@@ -168,7 +156,6 @@
       .cta{margin-top:18px}
     }
 
-    /* Яркий блок-экран с эмодзи */
     .hiCard{
       background:linear-gradient(180deg,#142a66,#0c1f4a);
       border:1px solid rgba(122,168,255,.35);
@@ -195,12 +182,11 @@
 
     @media (min-width:760px){
       .plans{grid-template-columns:1fr}
-      .hero-art{margin-top:0;max-height:none;padding:14px} /* корректнее для планшетов */
+      .hero-art{margin-top:0;max-height:none;padding:14px}
       .hero-art img{width:100%;max-width:560px}
       .cap{font-size:22px}
     }
 
-    /* Плавающая липкая панель CTA */
     .stickybar{
       position:fixed; left:0; right:0; bottom:14px; z-index:10;
       pointer-events:none; transition: opacity .35s ease, transform .35s ease;
@@ -215,7 +201,6 @@
     .stickybar.hide{opacity:0; transform:translateY(12px); pointer-events:none}
     .bar .btn{padding:12px 14px;border-radius:10px}
 
-    /* Глобальные reveal-анимации блоков «из пустоты» */
     .reveal{opacity:0; transform:translateY(26px) scale(.975); filter:blur(10px); will-change:opacity, transform, filter}
     .reveal.in{
       opacity:1; transform:none; filter:none;
@@ -223,15 +208,12 @@
     }
     .revealGlow.in{ box-shadow:0 0 0 rgba(0,0,0,0), 0 0 60px color-mix(in oklab, var(--halo) 12%, transparent) }
 
-    /* Аккуратная рамка по краям */
     .edge{position:fixed; inset:10px; border-radius:18px; pointer-events:none; z-index:9; box-shadow:inset 0 0 0 1px rgba(255,255,255,.06)}
 
-    /* ↓ Доп. пространство внизу, чтобы липкие кнопки не перекрывали подвал */
     .site-footer{ padding-bottom:110px; }
   </style>
 </head>
 <body>
-  <!-- фон и оверлеи -->
   <div class="flow-bg" id="flow"></div>
   <div class="grid-overlay"></div>
   <div class="grain"></div>
@@ -258,7 +240,6 @@
           </div>
 
           <div class="cta">
-            <!-- поменяны местами: сначала Как работает, затем Попробовать -->
             <a class="btn secondary reveal" href="#how">Как работает</a>
             <a class="btn reveal" href="#pricing" id="ctaStart">Попробовать</a>
           </div>
@@ -293,13 +274,13 @@
         <div class="tile reveal"><h3>Понимает текст на фото</h3><p>ИИ распознаёт объявления даже с картинок и прикреплённых снимков.</p></div>
         <div class="tile reveal"><h3>Единый удобный шаблон</h3><p>Все кастинги в одной аккуратной карточке.</p></div>
         <div class="tile reveal"><h3>Только подходящее</h3><p>ИИ сверяет ваш профиль с кастингом и шлёт только релевантные.</p></div>
-        <div class="tile reveal"><h3>Чистим шум</h3><p>Отсекаем спам, рекламу и повторы. Меньше хаоса — больше кастингов. </p></div>
+        <div class="tile reveal"><h3>Чистим шум</h3><p>Отсекаем спам, рекламу и повторы. Меньше хаоса — больше кастингов.</p></div>
         <div class="tile reveal"><h3>Заявка в 1 клик</h3><p>Как в Tinder: увидели кастинг — отправили профиль и портфолио моментально.</p></div>
       </div>
     </div>
   </section>
 
-  <!-- SLIDE 4: PRICING (только Профессионал) -->
+  <!-- SLIDE 4: PRICING -->
   <section class="slide" id="pricing">
     <div class="wrap">
       <div class="plans">
@@ -311,9 +292,10 @@
           </div>
           <div class="bullet"><span>✅</span><span class="t">Фильтрация только подходящих кастингов из 20+ WhatsApp/Telegram</span></div>
           <div class="bullet"><span>✅</span><span class="t">Уведомления о подходящих кастингах без спама и дублей</span></div>
-          <div class="bullet"><span>✅</span><span class="t">Возможность отклика в один клик, сохранённая история</span></div>
+          <div class="bullet"><span>✅</span><span class="t">Возможность отклика в 1 клик, сохранённая история</span></div>
           <div class="note"><b>Начни с пробного месяца за 5 ₸</b> — один съёмочный день уже окупит подписку</div>
-          <div class="cta"><a class="btn" href="https://t.me/your_bot_here" target="_blank" rel="noopener">Подключить к Telegram</a></div>
+          <!-- Кнопка оплаты TipTop Pay -->
+          <div class="cta"><a class="btn" href="#" id="payBtn">Подключить к Telegram</a></div>
         </div>
       </div>
     </div>
@@ -341,11 +323,10 @@
           <summary style="font-weight:800;cursor:pointer">Можно ли отменить подписку?</summary>
           <div style="color:var(--muted);margin-top:8px">Да. Первый месяц бесплатный, отмена в любой момент в один клик.</div>
         </details>
-        <details class="panel reveal" style="padding:12px;background:#0ф1733">
+        <details class="panel reveal" style="padding:12px;background:#0f1733">
           <summary style="font-weight:800;cursor:pointer">Чем это лучше вручную читать чаты?</summary>
           <div style="color:var(--muted);margin-top:8px">Вы экономите часы: не прокручиваете шум, не пропускаете важное, реагируете быстрее других — и чаще попадаете в шорт-лист.</div>
         </details>
-        <!-- Удалён нижний служебный футер внутри FAQ -->
       </div>
     </div>
   </section>
@@ -354,7 +335,6 @@
   <div class="stickybar hide" id="sticky">
     <div class="inner">
       <div class="bar">
-        <!-- тоже поменяли местами и сделали равной ширины -->
         <a class="btn secondary" href="#benefits">Почему это работает</a>
         <a class="btn" href="#pricing">Попробовать</a>
       </div>
@@ -362,7 +342,6 @@
   </div>
 
   <script>
-    // Reveal-анимации: блоки «из пустоты»
     const revealEls = document.querySelectorAll('.reveal, .tile, .badge, .panel.reveal, .emojiItem');
     const revIO = new IntersectionObserver((ents)=>{
       ents.forEach(e=>{
@@ -374,7 +353,6 @@
     }, {threshold:0.18});
     revealEls.forEach(el=>revIO.observe(el));
 
-    // Sticky CTA: показывать только после первого экрана
     const stickyBar = document.getElementById('sticky');
     const sections = [...document.querySelectorAll('.slide')];
     const firstSlide = sections[0];
@@ -391,7 +369,6 @@
     }, {threshold:0.55});
     sections.forEach(s=>secIO.observe(s));
 
-    // Клавиша Enter запускает CTA
     document.addEventListener('keydown', (ev)=>{
       if(ev.key === 'Enter'){
         const cta = document.getElementById('ctaStart');
@@ -399,7 +376,6 @@
       }
     });
 
-    // Уважение к prefers-reduced-motion
     const prm = window.matchMedia('(prefers-reduced-motion: reduce)');
     function applyPRM(){
       if(prm.matches){
@@ -416,7 +392,6 @@
     prm.addEventListener?.('change', applyPRM);
     applyPRM();
 
-    // Лёгкий параллакс по мыши на hero-art
     const heroImg = document.querySelector('.hero-art img');
     const hero = document.querySelector('.hero-art');
     if(hero && heroImg){
@@ -429,32 +404,93 @@
       hero.addEventListener('mouseleave', ()=>{ heroImg.style.transform = 'translateZ(20px)'; });
     }
   </script>
-<!-<!-- ===== SITE FOOTER: legal docs + requisites ===== -->
-<footer class="site-footer">
-  <div class="wrap">
-    <div style="margin:16px 0 24px; padding:14px; background:#0f1737d8; border:1px solid rgba(255,255,255,.08); border-radius:14px; box-shadow:0 10px 22px rgba(0,0,0,.25)">
-      <div style="display:flex; gap:14px; flex-wrap:wrap; align-items:center; color:#cfe0ff; margin-bottom:10px">
-        <a href="https://roletapp.kz/oferta" target="_blank" rel="noopener" style="text-decoration:none; border-bottom:1px dashed rgba(255,255,255,.35)">Публичная оферта</a>
-        <span style="opacity:.5">•</span>
-        <a href="https://roletapp.kz/privacy" target="_blank" rel="noopener" style="text-decoration:none; border-bottom:1px dashed rgba(255,255,255,.35)">Политика конфиденциальности</a>
-        <span style="opacity:.5">•</span>
-        <a href="mailto:telmanov.darkhan@gmail.com" style="text-decoration:none; border-bottom:1px dashed rgba(255,255,255,.35)">Контакты поддержки</a>
-        <span style="opacity:.5">•</span>
-        <a href="#" onclick="return false;" style="text-decoration:none; border-bottom:1px dashed rgba(255,255,255,.35)">Отменить подписку</a>
-      </div>
 
-      <div style="font-size:12px; color:#9bb0e0; line-height:1.5">
-        <div><strong>ИП Телманов Дархан</strong> — ИИН 041124500027</div>
-        <div>Юридический адрес: Казахстан, г. Астана, ул. 117, 41</div>
-        <div>Поддержка: Пн–Пт 10:00–18:00 (Астана, GMT+6) · E-mail: <a href="mailto:telmanov.darkhan@gmail.com" style="color:inherit">telmanov.darkhan@gmail.com</a></div>
-      </div>
+  <!-- TipTop Pay: официальный виджет -->
+  <script src="https://widget.tiptoppay.kz/bundles/widget.js" defer></script>
+  <script defer>
+  (function () {
+    const PUBLIC_TERMINAL_ID = "pk_0f01d7d3f4ae6e22af386a501024d"; // Public ID
+    const CURRENCY  = "KZT";
+    const AMOUNT_TRIAL   = 5;     // первый месяц
+    const AMOUNT_MONTHLY = 3490;  // инфо в описании
 
-      <div style="margin-top:10px; font-size:12px; color:#9bb0e0">
-        © Roletapp AI. Все права защищены.
+    function getAccountId() {
+      try {
+        const u = new URL(location.href);
+        const fromUrl = u.searchParams.get("uid");
+        if (fromUrl) { localStorage.setItem("ttp_account_id", fromUrl); return fromUrl; }
+        const saved = localStorage.getItem("ttp_account_id");
+        if (saved) return saved;
+      } catch (e) {}
+      const gen = "web-" + Math.random().toString(36).slice(2);
+      localStorage.setItem("ttp_account_id", gen);
+      return gen;
+    }
+
+    async function startSubscription() {
+      if (!window.tiptop || typeof window.tiptop.Widget !== "function") {
+        console.error("TipTopPay: widget factory not found.", Object.keys(window));
+        alert("Платёжный виджет не загрузился. Отключите блокировщики и обновите страницу.");
+        return;
+      }
+
+      const widget = new window.tiptop.Widget();
+      const params = {
+        publicTerminalId: PUBLIC_TERMINAL_ID,
+        paymentSchema: "Single",
+        amount: AMOUNT_TRIAL,
+        currency: CURRENCY,
+        description: "Roletapp AI — подписка (первый месяц " + AMOUNT_TRIAL + " ₸, далее " + AMOUNT_MONTHLY + " ₸/мес)",
+        userInfo: { accountId: String(getAccountId()) },
+        recurrent: { interval: "Month", period: 1 },
+        // externalId: "sub-" + Date.now(),
+        // successRedirectUrl: location.origin + "/thank-you",
+        // failRedirectUrl: location.origin + "/payment-fail",
+        // metadata: { plan: "pro" } // опционально
+      };
+
+      try {
+        const res = await widget.start(params);
+        console.log("TipTopPay result:", res);
+      } catch (err) {
+        console.error("TipTopPay error:", err);
+        alert("Оплата не запустилась. Попробуйте ещё раз или используйте другой способ.");
+      }
+    }
+
+    document.getElementById("payBtn")?.addEventListener("click", function (e) {
+      e.preventDefault();
+      startSubscription();
+    });
+  })();
+  </script>
+
+  <!-- ===== SITE FOOTER: legal docs + requisites ===== -->
+  <footer class="site-footer">
+    <div class="wrap">
+      <div style="margin:16px 0 24px; padding:14px; background:#0f1737d8; border:1px solid rgba(255,255,255,.08); border-radius:14px; box-shadow:0 10px 22px rgba(0,0,0,.25)">
+        <div style="display:flex; gap:14px; flex-wrap:wrap; align-items:center; color:#cfe0ff; margin-bottom:10px">
+          <a href="https://roletapp.kz/oferta" target="_blank" rel="noopener" style="text-decoration:none; border-bottom:1px dashed rgba(255,255,255,.35)">Публичная оферта</a>
+          <span style="opacity:.5">•</span>
+          <a href="https://roletapp.kz/privacy" target="_blank" rel="noopener" style="text-decoration:none; border-bottom:1px dashed rgba(255,255,255,.35)">Политика конфиденциальности</a>
+          <span style="opacity:.5">•</span>
+          <a href="mailto:telmanov.darkhan@gmail.com" style="text-decoration:none; border-bottom:1px dashed rgba(255,255,255,.35)">Контакты поддержки</a>
+          <span style="opacity:.5">•</span>
+          <a href="#" onclick="return false;" style="text-decoration:none; border-bottom:1px dashed rgba(255,255,255,.35)">Отменить подписку</a>
+        </div>
+
+        <div style="font-size:12px; color:#9bb0e0; line-height:1.5">
+          <div><strong>ИП Телманов Дархан</strong> — ИИН 041124500027</div>
+          <div>Юридический адрес: Казахстан, г. Астана, ул. 117, 41</div>
+          <div>Поддержка: Пн–Пт 10:00–18:00 (Астана, GMT+6) · E-mail: <a href="mailto:telmanov.darkhan@gmail.com" style="color:inherit">telmanov.darkhan@gmail.com</a></div>
+        </div>
+
+        <div style="margin-top:10px; font-size:12px; color:#9bb0e0">
+          © Roletapp AI. Все права защищены.
+        </div>
       </div>
     </div>
-  </div>
-</footer>
-<!-- ===== /SITE FOOTER ===== -->
+  </footer>
+  <!-- ===== /SITE FOOTER ===== -->
 </body>
 </html>

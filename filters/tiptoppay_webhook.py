@@ -1,37 +1,33 @@
 # tiptoppay_webhook.py
-# Запуск (пример): /opt/casting_mirror_bot/.venv/bin/uvicorn tiptoppay_webhook:app --host 0.0.0.0 --port 8000 --reload
 
-import os, hmac, hashlib, json, sqlite3
+import os, hmac, hashlib, base64, json, sqlite3
 from datetime import datetime
 from fastapi import FastAPI, Request, Header
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import JSONResponse
 
-# === НАСТРОЙКИ ===
-# По умолчанию кладём БД в /opt/casting_mirror_bot/data/actors.db (относительно этого файла: ../data/actors.db)
 DB_PATH = os.getenv(
     "DB_PATH",
     os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "actors.db"))
 )
-TIPTOP_API_PASSWORD = os.getenv("TIPTOP_API_PASSWORD", "")  # Пароль для API из ЛК TipTop Pay
+TIPTOP_API_PASSWORD = os.getenv("TIPTOP_API_PASSWORD", "")
 
 app = FastAPI(title="TipTopPay Webhook")
 
-# === helpers: таблица subs и апсерт статуса ===
 def ensure_db():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     con = sqlite3.connect(DB_PATH)
     cur = con.cursor()
     cur.execute("""
         CREATE TABLE IF NOT EXISTS subs(
-            user_id   INTEGER PRIMARY KEY,
-            status    TEXT NOT NULL CHECK(status IN ('active','inactive')),
+            user_id    TEXT PRIMARY KEY,
+            status     TEXT NOT NULL CHECK(status IN ('active','inactive')),
             updated_at TEXT NOT NULL
         )
     """)
     con.commit()
     con.close()
 
-def set_sub_status(uid: int, status: str):
+def set_sub_status(uid: str, status: str):
     status = "active" if status == "active" else "inactive"
     con = sqlite3.connect(DB_PATH)
     cur = con.cursor()
@@ -43,159 +39,134 @@ def set_sub_status(uid: int, status: str):
     con.commit()
     con.close()
 
-# === валидация подписи (при включённом TIPTOP_API_PASSWORD) ===
-def verify_signature(raw_body: bytes, signature_header: str | None) -> bool:
-    """
-    По докам TipTop Pay подпись обычно HMAC-SHA256 по сыроему телу запроса,
-    ключ — «Пароль для API». Имя заголовка может отличаться, мы принимаем несколько вариантов.
-    Если TIPTOP_API_PASSWORD не задан — пропускаем (dev-режим).
-    """
-    if not TIPTOP_API_PASSWORD:
-        return True  # dev / без подписи
-    if not signature_header:
-        return False
-    digest = hmac.new(TIPTOP_API_PASSWORD.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(digest.lower(), signature_header.strip().lower())
+def _hmac_base64(secret: str, data: bytes) -> str:
+    digest = hmac.new(secret.encode("utf-8"), data, hashlib.sha256).digest()
+    return base64.b64encode(digest).decode("ascii")
 
-# === извлечение uid из полезной нагрузки ===
+def _raw_string_for_get(request: Request) -> bytes:
+    # Для GET по докам подписывается путь + '?' + query
+    path = request.url.path
+    qs = request.url.query
+    s = f"{path}?{qs}" if qs else path
+    return s.encode("utf-8")
+
+def signatures_equal(a: str | None, b: str | None) -> bool:
+    if not a or not b:
+        return False
+    # сравниваем без пробелов/кавычек, регистр неважен
+    a = a.strip().strip('"').strip("'")
+    b = b.strip().strip('"').strip("'")
+    return hmac.compare_digest(a, b)
+
+async def verify_signature(request: Request, x_content_hmac: str | None, content_hmac: str | None) -> bool:
+    if not TIPTOP_API_PASSWORD:
+        return True  # dev режим
+    expected = None
+    if request.method.upper() == "GET":
+        expected = _hmac_base64(TIPTOP_API_PASSWORD, _raw_string_for_get(request))
+    else:
+        raw = await request.body()
+        expected = _hmac_base64(TIPTOP_API_PASSWORD, raw)
+    provided = x_content_hmac or content_hmac
+    return signatures_equal(provided, expected)
+
 def _try_int(v):
     try:
-        return int(v)
+        return int(str(v))
     except Exception:
         return None
 
-def extract_uid(payload: dict) -> int | None:
-    """
-    Пробуем все типовые места:
-    - userInfo.accountId (и внутри data.userInfo.accountId)
-    - metadata: uid / user_id / accountId (на верхнем уровне, в data, в order/payment/subscription.*.metadata)
-    - custom_fields.uid
-    - accountId / customerId на верхнем уровне
-    - order.description: "uid:123456"
-    """
-    # 0) userInfo.accountId (основной вариант из мини-аппы)
-    v = (
-        payload.get("userInfo", {}).get("accountId")
-        or payload.get("data", {}).get("userInfo", {}).get("accountId")
-    )
-    uid = _try_int(v)
-    if uid is not None:
-        return uid
+def extract_uid(payload: dict) -> str | None:
+    # 1) Прямо из уведомлений (рекомендовано доками): AccountId (заглавная A)
+    for k in ("AccountId", "accountId"):
+        v = payload.get(k)
+        if v is not None:
+            return str(v)
 
-    # 1) metadata.*
-    for root_key in (None, "data", "order", "payment", "subscription", "recurrent"):
-        node = payload if root_key is None else payload.get(root_key, {})
-        md = node.get("metadata") if isinstance(node, dict) else {}
-        if isinstance(md, dict):
-            for k in ("uid", "user_id", "accountId", "tg_uid"):
-                uid = _try_int(md.get(k))
-                if uid is not None:
-                    return uid
+    # 2) На всякий случай — metadata.* (если вы так передаёте)
+    md = payload.get("metadata") or {}
+    if isinstance(md, dict):
+        for k in ("uid", "user_id", "accountId", "tg_uid"):
+            v = md.get(k)
+            if v is not None:
+                return str(v)
 
-    # 2) custom_fields.uid
-    cf = payload.get("custom_fields") or payload.get("data", {}).get("custom_fields")
-    if isinstance(cf, dict):
-        uid = _try_int(cf.get("uid"))
-        if uid is not None:
-            return uid
-
-    # 3) accountId / customerId на верхнем уровне или в data
-    for key in ("accountId", "customerId"):
-        uid = _try_int(payload.get(key) or payload.get("data", {}).get(key))
-        if uid is not None:
-            return uid
-
-    # 4) order.description как "uid:123456"
-    try:
-        desc = payload.get("order", {}).get("description") or ""
-        if isinstance(desc, str) and "uid:" in desc:
-            import re
-            m = re.search(r"uid:(\d+)", desc)
-            if m:
-                return int(m.group(1))
-    except Exception:
-        pass
+    # 3) Описание вида "uid:123456"
+    desc = payload.get("Description") or payload.get("description") or ""
+    if isinstance(desc, str) and "uid:" in desc:
+        import re
+        m = re.search(r"uid:(\d+)", desc)
+        if m:
+            return m.group(1)
 
     return None
 
-# === нормализация события -> статус подписки ===
-def map_event_to_status(payload: dict) -> str | None:
+def map_payload_to_status_and_type(payload: dict) -> tuple[str | None, str | None]:
     """
-    Активируем при успешных оплатах/активациях/продлениях,
-    деактивируем при отменах/ошибках.
+    Возвращает (new_status, notif_type)
+    notif_type ∈ {"Pay","Recurrent","Fail","Cancel","Refund","Confirm", None}
     """
-    event = (payload.get("event") or payload.get("type") or "").lower()
-    status = (payload.get("status") or payload.get("data", {}).get("status") or "").lower()
+    # Явная метка типа (если передаёте её сами в ЛК или query)
+    notif_type = (payload.get("Type") or payload.get("NotificationType") or "").strip() or None
 
-    activate_events = {
-        "payment.succeeded",
-        "invoice.paid",
-        "subscription.activated",
-        "subscription.renewed",
-        "subscription.charge.succeeded",
-        "recurring.charge.succeeded",
-    }
-    deactivate_events = {
-        "payment.failed",
-        "subscription.canceled",
-        "subscription.cancelled",
-        "subscription.deactivated",
-        "subscription.charge.failed",
-        "recurring.charge.failed",
-        "invoice.unpaid",
-        "payment.refunded",
-        "payment.reversed",
-    }
+    # Эвристики по структуре (док: Recurrent содержит период/интервал/статус)
+    if ("Interval" in payload or "Period" in payload) or notif_type == "Recurrent":
+        status = (payload.get("Status") or "").lower()
+        return ("active" if status == "active" else "inactive"), "Recurrent"
 
-    if event in activate_events:
-        return "active"
-    if event in deactivate_events:
-        return "inactive"
+    # Pay/Confirm/Fail/Cancel/Refund различайте по настройке ЛК; по умолчанию GET на разные URL
+    # Если пришло Pay (первая успешная оплата) — активируем
+    if notif_type in {"Pay", "Confirm"} or "CardToken" in payload:
+        return "active", notif_type or "Pay"
 
-    if status in {"succeeded", "paid", "success", "approved", "active"}:
-        return "active"
-    if status in {"failed", "declined", "canceled", "cancelled", "inactive", "unpaid", "reversed"}:
-        return "inactive"
+    if notif_type in {"Fail", "Cancel", "Refund"}:
+        return "inactive", notif_type
 
-    return None
+    # Если не смогли определить — не меняем
+    return None, None
 
-# === endpoints ===
 @app.get("/healthz")
 def healthz():
     return {"ok": True}
 
-@app.post("/api/tiptoppay/webhook", response_class=PlainTextResponse)
+@app.api_route("/api/tiptoppay/webhook", methods=["GET", "POST"])
 async def tiptoppay_webhook(
     request: Request,
-    x_signature: str | None = Header(default=None),
-    x_api_signature: str | None = Header(default=None),
-    x_content_signature: str | None = Header(default=None),
+    x_content_hmac: str | None = Header(default=None),   # X-Content-HMAC
+    content_hmac: str | None = Header(default=None),     # Content-HMAC
 ):
     ensure_db()
 
-    raw = await request.body()
-    # принимаем несколько возможных имён заголовка подписи
-    sig = x_api_signature or x_signature or x_content_signature
-    if not verify_signature(raw, sig):
-        return PlainTextResponse("invalid signature", status_code=401)
+    # 1) Проверка подписи (Base64 HMAC-SHA256)
+    ok = await verify_signature(request, x_content_hmac, content_hmac)
+    if not ok:
+        return JSONResponse({"code": 403, "message": "invalid signature"}, status_code=403)
 
-    try:
-        payload = json.loads(raw.decode("utf-8"))
-    except Exception:
-        return PlainTextResponse("bad json", status_code=400)
+    # 2) Разбор payload: GET — query, POST — form/json
+    if request.method.upper() == "GET":
+        payload = dict(request.query_params)
+    else:
+        ctype = (request.headers.get("content-type") or "").lower()
+        if "application/json" in ctype:
+            payload = await request.json()
+            if not isinstance(payload, dict):
+                payload = {}
+        else:
+            form = await request.form()
+            payload = {k: v for k, v in form.items()}
 
+    # 3) Извлекаем uid (AccountId и др.)
     uid = extract_uid(payload)
-    if uid is None:
-        # Приняли, чтобы провайдер не ретраил бесконечно, но логически ничего не делаем
-        return PlainTextResponse("ok (no uid)", status_code=200)
 
-    new_status = map_event_to_status(payload)
-    if new_status is None:
-        return PlainTextResponse("ok (ignored event)", status_code=200)
+    # 4) Определяем тип уведомления и новый статус
+    new_status, notif_type = map_payload_to_status_and_type(payload)
 
-    try:
-        set_sub_status(uid, new_status)
-    except Exception:
-        return PlainTextResponse("db error", status_code=500)
+    # 5) Если всё есть — апдейтим
+    if uid and new_status:
+        try:
+            set_sub_status(uid, new_status)
+        except Exception:
+            return JSONResponse({"code": 500, "message": "db error"}, status_code=500)
 
-    return PlainTextResponse("ok", status_code=200)
+    # 6) Всегда отвечаем {"code":0} при успешной обработке (по докам)
+    return JSONResponse({"code": 0})

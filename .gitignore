@@ -13,4 +13,4 @@ __pycache__/
 *.db
 *.session
 /data/user_media/
-/filters/media/
+/filters/media/git

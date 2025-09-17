@@ -5,6 +5,10 @@ import os, hmac, hashlib, base64, json, sqlite3
 from datetime import datetime
 from fastapi import FastAPI, Request, Header
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+
+WEBAPP_SIGNING_SECRET = os.getenv("WEBAPP_SIGNING_SECRET", "")  # тот же секрет, что и у бота
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "https://roletapp.kz,http://localhost:5173").split(",")
 
 # === Настройки ===
 DB_PATH = os.getenv(
@@ -15,6 +19,14 @@ TIPTOP_API_PASSWORD = os.getenv("TIPTOP_API_PASSWORD", "")
 
 app = FastAPI(title="TipTopPay Webhook")
 
+# CORS для фронта, который дергает /api/sign
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[o.strip() for o in ALLOWED_ORIGINS if o.strip()],
+    allow_methods=["GET"],
+    allow_headers=["*"],
+)
+
 # === БД ===
 def ensure_db():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
@@ -22,7 +34,7 @@ def ensure_db():
     cur = con.cursor()
     cur.execute("""
         CREATE TABLE IF NOT EXISTS subs(
-            user_id    TEXT PRIMARY KEY,
+            user_id    INTEGER PRIMARY KEY,
             status     TEXT NOT NULL CHECK(status IN ('active','inactive')),
             updated_at TEXT NOT NULL
         )
@@ -72,13 +84,14 @@ async def verify_signature(request: Request, x_content_hmac: str | None, content
     provided = x_content_hmac or content_hmac
     return signatures_equal(provided, expected)
 
-# === Извлечение AccountId ===
+# === Извлечение AccountId (только numeric TG-id) ===
 def extract_uid(payload: dict) -> str | None:
     # Рекомендовано: AccountId / accountId
     for k in ("AccountId", "accountId"):
         v = payload.get(k)
         if v is not None:
-            return str(v)
+            s = str(v)
+            return s if s.isdigit() else None
 
     # Дополнительно — metadata.* (если передаётся)
     md = payload.get("metadata") or {}
@@ -86,7 +99,8 @@ def extract_uid(payload: dict) -> str | None:
         for k in ("uid", "user_id", "accountId", "tg_uid"):
             v = md.get(k)
             if v is not None:
-                return str(v)
+                s = str(v)
+                return s if s.isdigit() else None
 
     # Описание вида "uid:123456"
     desc = payload.get("Description") or payload.get("description") or ""
@@ -125,10 +139,26 @@ def map_payload_to_status_and_type(payload: dict) -> tuple[str | None, str | Non
 
     return None, None
 
+# === Подпись deep-link для мини-аппы ===
+def make_webapp_sig(uid: str, ts: str) -> str:
+    if not WEBAPP_SIGNING_SECRET:
+        return ""  # dev-режим
+    msg = f"{uid}:{ts}".encode("utf-8")
+    return hmac.new(WEBAPP_SIGNING_SECRET.encode("utf-8"), msg, hashlib.sha256).hexdigest()
+
 # === Endpoints ===
 @app.get("/healthz")
 def healthz():
     return {"ok": True}
+
+@app.get("/api/sign")
+async def sign(uid: str):
+    # подписываем только telegram-id (числа)
+    if not uid.isdigit():
+        return JSONResponse({"error": "uid must be numeric"}, status_code=400)
+    ts = str(int(datetime.utcnow().timestamp()))
+    sig = make_webapp_sig(uid, ts)
+    return {"ts": ts, "sig": sig}
 
 @app.api_route("/api/tiptoppay/webhook", methods=["GET", "POST"])
 async def tiptoppay_webhook(

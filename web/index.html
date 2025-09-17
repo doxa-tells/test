@@ -409,6 +409,8 @@
     const AMOUNT_TRIAL   = 30;     // первый месяц
     const AMOUNT_MONTHLY = 3490;  // далее
 
+    const API_SIGN = "/api/sign"; // вариант B: сервер отдаёт ts/sig для deep-link
+
     function readUidFromTgWebApp() {
       try { return window.Telegram?.WebApp?.initDataUnsafe?.user?.id || null; } catch (e) { return null; }
     }
@@ -436,6 +438,26 @@
       }
 
       const uid = String(getAccountId());
+
+      // вариант B: требуем числовой Telegram ID (веб-uid не подойдёт для подписки)
+      if (!/^\d+$/.test(uid)) {
+        alert("Откройте оплату из Telegram (мини-приложение), чтобы мы связали подписку с вашим аккаунтом.");
+        return;
+      }
+
+      // вариант B: запрашиваем подпись (ts/sig) для последующей связки
+      let ts = "", sig = "";
+      try {
+        const r = await fetch(`${API_SIGN}?uid=${encodeURIComponent(uid)}`, { method: "GET" });
+        if (r.ok) {
+          const j = await r.json();
+          ts = j.ts || "";
+          sig = j.sig || "";
+        }
+      } catch (e) {
+        console.warn("Не удалось получить подпись /api/sign:", e);
+      }
+
       const widget = new window.tiptop.Widget();
 
       const params = {
@@ -446,8 +468,9 @@
         description: `Roletapp AI — подписка (первый месяц ${AMOUNT_TRIAL} ₸, далее ${AMOUNT_MONTHLY} ₸/мес)`,
         userInfo: { accountId: uid },
         recurrent: { interval: "Month", period: 1 },
-        metadata: { tg_uid: uid, site_id: TIPTOP_SITE_ID, source: "webapp" },
-        successRedirectUrl: WEBAPP_URL + "thank-you",
+        metadata: { tg_uid: uid, site_id: TIPTOP_SITE_ID, source: "webapp", ts, sig },
+        // вариант B: прокидываем uid/ts/sig в redirect, чтобы "thank-you" могла построить deep-link
+        successRedirectUrl: `${WEBAPP_URL}thank-you?uid=${encodeURIComponent(uid)}${ts?`&ts=${encodeURIComponent(ts)}&sig=${encodeURIComponent(sig)}`:""}`,
         failRedirectUrl: WEBAPP_URL + "payment-fail"
       };
 

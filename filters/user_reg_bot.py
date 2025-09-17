@@ -22,7 +22,6 @@ import json
 import base64
 import aiohttp  # для HTTP-вызовов Bot API
 import hmac, hashlib, time
-import urllib.parse as up
 from telethon import types
 from datetime import datetime
 from pathlib import Path
@@ -32,6 +31,9 @@ from dotenv import load_dotenv
 from telethon import TelegramClient, events, Button
 from telethon.tl.custom.message import Message
 from telethon.errors import MessageIdInvalidError, MessageNotModifiedError
+import re
+import urllib.parse as up  # у вас уже есть, но убедитесь что импорт именно как up
+
 
 # --- ENV --------------------------------------------------------------------
 
@@ -98,12 +100,16 @@ def init_db():
             height_cm INTEGER,
             weight_kg INTEGER,
             hair TEXT,
+            hair_color TEXT,
+            hair_type TEXT,
+            eye_color TEXT,
             languages TEXT,
             video_vizitka TEXT,
             showreel TEXT,
             portfolio TEXT,
             projects TEXT,
             phone TEXT,
+            skills TEXT,
             instagram TEXT,
             photo1_id TEXT,
             photo2_id TEXT,
@@ -161,12 +167,37 @@ def init_db():
     except Exception:
         pass
 
-    # миграция на случай старой базы (добавляем TG-ссылки для фото, если их не было)
-    for col in ("photo1_tg","photo2_tg","photo3_tg","photo4_tg"):
+    # --- миграции для старой базы ---
+    # добавляем TG-ссылки для фото
+    for col in ("photo1_tg", "photo2_tg", "photo3_tg", "photo4_tg"):
         try:
             cur.execute(f"ALTER TABLE users ADD COLUMN {col} TEXT")
         except Exception:
             pass
+
+    # добавляем skills
+    try:
+        cur.execute("ALTER TABLE users ADD COLUMN skills TEXT")
+    except Exception:
+        pass
+
+    # добавляем hair_color
+    try:
+        cur.execute("ALTER TABLE users ADD COLUMN hair_color TEXT")
+    except Exception:
+        pass
+
+    # добавляем hair_type
+    try:
+        cur.execute("ALTER TABLE users ADD COLUMN hair_type TEXT")
+    except Exception:
+        pass
+
+    # добавляем eye_color
+    try:
+        cur.execute("ALTER TABLE users ADD COLUMN eye_color TEXT")
+    except Exception:
+        pass
 
     con.commit()
     con.close()
@@ -338,7 +369,9 @@ def upsert_user(user_id: int, data: Dict[str, Any]):
         "body_type":     data.get("body_type"),
         "height_cm":     _to_int(data.get("height_cm")),
         "weight_kg":     _to_int(data.get("weight_kg")),
-        "hair":          data.get("hair"),
+        "hair_color":    data.get("hair_color"),
+        "hair_type":     data.get("hair_type"),
+        "eye_color":     data.get("eye_color"),
         "languages":     ", ".join(data["languages"]) if isinstance(data.get("languages"), list) else data.get("languages"),
         "video_vizitka": data.get("video_vizitka"),
         "showreel":      data.get("showreel"),
@@ -346,6 +379,7 @@ def upsert_user(user_id: int, data: Dict[str, Any]):
         "projects":      data.get("projects"),
         "phone":         data.get("phone"),
         "instagram":     data.get("instagram"),
+        "skills":        data.get("skills"),
         "photo1_id":     data.get("photo1_id"),
         "photo2_id":     data.get("photo2_id"),
         "photo3_id":     data.get("photo3_id"),
@@ -478,17 +512,22 @@ def format_summary(data: Dict[str, Any]) -> str:
         f"🏋️‍♂️ Телосложение: {data.get('body_type','—')}",
         f"📏 Рост: {data.get('height_cm','—')} см",
         f"⚖️ Вес: {data.get('weight_kg','—')} кг",
-        f"💇 Волосы: {data.get('hair','—')}",
+        f"🎨 Цвет волос: {data.get('hair_color', '—')}",
+        f"💈 Тип волос: {data.get('hair_type', '—')}",
+        f"👁 Цвет глаз: {data.get('eye_color', '—')}",
         f"🗣 Языки: {langs}",
         f"🎬 Видеовизитка: {data.get('video_vizitka') or '—'}",
         f"📹 Шоурил: {data.get('showreel') or '—'}",
         f"🖼 Портфолио: {data.get('portfolio') or '—'}",
         f"🎞 Проекты: {data.get('projects','—')}",
+        f"🧠 Навыки: {data.get('skills', '—')}",
         f"📞 Телефон: {data.get('phone','—')}",
         f"📸 Instagram: {data.get('instagram','—')}",
-        f"\n🌟🌟🌟"
-        f"\nПодключи ИИ-кастинг агента и получай **только подходящие для тебя** кастинги из 30+ WA/TG групп, с уникальной возможностью отправлять портфолио в один клик",
+        f" ",
+        f"🌟**Подсказка:**",
+        f"Подключи ИИ-кастинг агента и получай только подходящие для тебя кастинги из 30+ WA/TG групп с возможностью отправлять портфолио в один клик."
     ]
+
     return "\n".join(lines)
 
 def build_controls(can_back: bool):
@@ -542,6 +581,60 @@ async def clear_sticky_notices(chat_id: int, uid: int, except_id: Optional[int] 
     except Exception:
         pass
 
+ # --- отклик: построение контакта и ссылки -----------------------------------
+CONTACT_RE_TG = re.compile(r"@([A-Za-z0-9_]{5,})")
+CONTACT_RE_PHONE = re.compile(r"(\+?\d[\d\-\s\(\)]{7,}\d)")
+
+def _find_contact_in_text(text: str) -> dict:
+    t = (text or "").strip()
+    # сначала @username
+    m = CONTACT_RE_TG.search(t)
+    if m:
+        return {"type": "tg", "username": m.group(1)}
+    # затем номер телефона
+    m = CONTACT_RE_PHONE.search(t)
+    if m:
+        digits = re.sub(r"\D", "", m.group(1))
+        # нормализация 8XXXXXXXXXX -> 7XXXXXXXXXX
+        if len(digits) == 11 and digits.startswith("8"):
+            digits = "7" + digits[1:]
+        return {"type": "wa", "phone": digits}
+    return {}
+
+def _build_apply_text(u: dict, ad_text: str) -> str:
+    ad = (ad_text or "").strip()
+    card = format_summary(u)
+    return (
+        "Здравствуйте.\n"
+        "Я по поводу вашего кастинга на Roletapp AI.\n\n"
+        f"{ad}\n\n"
+        "Моя анкета:\n"
+        f"{card}"
+        )
+
+def _build_apply_url(uid: int, ad_text: str) -> Optional[str]:
+    u = get_user(uid)
+    if not u:
+        return None
+    contact = _find_contact_in_text(ad_text)
+    if not contact:
+        return None
+
+    msg = _build_apply_text(u, ad_text)
+    enc = up.quote(msg)
+
+    if contact["type"] == "wa":
+        # оф. формат wa.me — только цифры, без +
+        return f"https://wa.me/{contact['phone']}?text={enc}"
+
+    if contact["type"] == "tg":
+        # В Telegram нельзя заранее подставить текст сразу в ЛС человеку.
+        # Делаем «поделиться» с текстом, а в самом тексте будет ссылка на контакт.
+        user_link = f"https://t.me/{contact['username']}"
+        return f"https://t.me/share/url?url={up.quote(user_link)}&text={enc}"
+
+    return None
+
 async def _render_match_view(uid: int, chat_id: int, match: dict, pos: int, total: int):
     """
     Показывает оригинальный пост с нужным поведением:
@@ -575,6 +668,12 @@ async def _render_match_view(uid: int, chat_id: int, match: dict, pos: int, tota
     # 2) текст подписи
     text_cache = match.get("text_cache") or ""
     caption = _extract_original_text(src_msgs, fallback=text_cache) or ""
+    # кнопки отклика/скипа
+    apply_url = _build_apply_url(uid, caption)
+    apply_btn = Button.url("✅ Откликнуться", apply_url) if apply_url else Button.inline("✅ Откликнуться",
+                                                                                        b"apply_unavailable")
+    skip_btn = Button.inline("⏭ Пропустить", b"cast_next")  # скип = перейти к следующему
+
 
     # 3) случай: РОВНО ОДНО медиа (не альбом) -> одно сообщение с кнопками
     if len(src_msgs) == 1:
@@ -589,6 +688,7 @@ async def _render_match_view(uid: int, chat_id: int, match: dict, pos: int, tota
                     caption=full_caption,
                     buttons=[
                         [Button.inline("◀️", b"cast_prev"), Button.inline("▶️", b"cast_next")],
+                        [apply_btn, skip_btn],
                         [Button.inline("🏠 Главное меню", b"home")],
                     ],
                     link_preview=False,
@@ -610,6 +710,7 @@ async def _render_match_view(uid: int, chat_id: int, match: dict, pos: int, tota
             ((caption + f"\n\nПозиция: {pos}/{total}").strip() if caption else f"Позиция: {pos}/{total}"),
             buttons=[
                 [Button.inline("◀️", b"cast_prev"), Button.inline("▶️", b"cast_next")],
+                [apply_btn, skip_btn],
                 [Button.inline("🏠 Главное меню", b"home")],
             ],
             link_preview=False,
@@ -644,6 +745,7 @@ async def _render_match_view(uid: int, chat_id: int, match: dict, pos: int, tota
         f"Позиция: {pos}/{total}",
         buttons=[
             [Button.inline("◀️", b"cast_prev"), Button.inline("▶️", b"cast_next")],
+            [apply_btn, skip_btn],
             [Button.inline("⬅️ Назад", b"back")],
             [Button.inline("🏠 Главное меню", b"home")],
         ],
@@ -664,21 +766,31 @@ STEPS = [
      "choices": ["Азиатский", "Европеоидный", "Ближневосточный", "Латинский", "Евразиатский", "Афроамериканский", "Индийский", "Скандинавский"]},
     {"key": "body_type",   "q": "🏋️‍♂️**Ваше телосложение**", "type": "choicefree",
      "choices": ["Худощавое", "Стройное", "Атлетичное", "Плотное", "Полное","Мускулистое",]},
-    {"key": "height_cm",    "q": "📏 **Рост в сантиметрах** \n (только число)", "type": "number"},
-    {"key": "weight_kg",    "q": "⚖️ **Вес в килограммах** \n (только число)", "type": "number"},
-    {"key": "hair",         "q": "💇‍♂️ **Цвет и тип волос** \n (Пример: карие - кудрявые)", "type": "text"},
-    {"key": "languages",    "q": "🗣 **На каких языках говорите?** \n (Выберите один или несколько)","type": "multiselect",
+    {"key": "height_cm",    "q": "📏 **Рост в сантиметрах** \n (только число. Например: 188)", "type": "number"},
+    {"key": "weight_kg",    "q": "⚖️ **Вес в килограммах** \n (Только число. Например: 75)", "type": "number"},
+    {"key": "hair_color", "q": "🎨 **Цвет волос**", "type": "choice", "choices": [
+        "Чёрные", "Каштановые", "Русые", "Светло-русые", "Блондинистые",
+        "Рыжие", "Седые", "Цветные"
+    ]},
+    {"key": "hair_type", "q": "💈 **Тип волос**", "type": "choice", "choices": [
+        "Прямые", "Волнистые", "Кудрявые", "Афро", "Без волос"
+    ]},
+    {"key": "eye_color", "q": "👁 **Цвет глаз**", "type": "choice", "choices": [
+        "Карие", "Голубые", "Зелёные", "Серые", "Чёрные", "Медовые", "Разные"
+    ]},
+    {"key": "languages",    "q": "🗣 **На каких языках говорите?** \n(Выберите один или несколько и нажмите сохранить)","type": "multiselect",
      "options": ["Русский", "Казахский", "Английский", "Немецкий", "Французский", "Турецкий", "Китайский", "Испанский", "Итальянский", "Арабский"], "limit": 10, "autonext": False},
-    {"key": "video_vizitka","q": "🎬 **Видеовизитка (ссылка)**. \nЕсли нет — отправьте «нет».", "type": "url-or-skip"},
-    {"key": "showreel",     "q": "📹 **Шоурил (ссылка)** \nЕсли нет — отправьте «нет».", "type": "url-or-skip"},
-    {"key": "portfolio",    "q": "🖼 **Портфолио (ссылка)** \nЕсли нет — отправьте «нет».", "type": "url-or-skip"},
-    {"key": "projects",     "q": "🎞 **Проекты/опыт** \nТекстом — можно в несколько строк.", "type": "text"},
+    {"key": "video_vizitka","q": "🎬 **Видеовизитка (ссылкой)**. \n Видеовизитка — это короткое видео, где актёр естественно представляет себя в кадре, называя имя, возраст, параметры и демонстрируя внешность без актёрской игры.\n \nЕсли нет — нажмите «пропустить».\n(Можно добавить позже)", "type": "url-or-skip"},
+    {"key": "showreel",     "q": "📹 **Шоурил (ссылкой)** \n Шоу-рил (showreel) — это короткое видео (1–2 минуты), в котором собраны лучшие актёрские сцены с участием актёра. Его задача — быстро показать кастинг-директорам твои способности, типаж и экранную харизму.\n \nЕсли нет — нажмите «пропустить».\n(Можно добавить позже)", "type": "url-or-skip"},
+    {"key": "portfolio",    "q": "🖼 **Диск с фото и пробами (ссылкой)** \n Диск с портфолио и пробами — это цифровой носитель (обычно ссылка), на котором собраны Ваши разные фото и актёрские пробы для презентации кастинг-директору.\n \nЕсли нет — нажмите «пропустить»\n(Можно добавить позже)", "type": "url-or-skip"},
+    {"key": "projects",     "q": "🎞 **Проекты/опыт** \nТекстом — можно в несколько строк.\n \nЕсли нет — нажмите «пропустить»\n (Можно добавить позже)", "type": "url-or-skip"},
     {"key": "phone",        "q": "📞 **Номер телефона** \n (Пример: +7(777)777-77-77)", "type": "text"},
     {"key": "instagram",    "q": "📸 **Instagram ссылка** \n Пример:\nhttps://www.instagram.com/**doxa.tells**/", "type": "text"},
-    {"key": "photo1_id",    "q": "📷 Фото #1 — *анфас*. Пришлите фото как изображение.", "type": "photo", "slot": 1},
-    {"key": "photo2_id",    "q": "📷 Фото #2 — *профиль*. Пришлите фото как изображение.", "type": "photo", "slot": 2},
-    {"key": "photo3_id",    "q": "📷 Фото #3 — *3/4*. Пришлите фото как изображение.", "type": "photo", "slot": 3},
-    {"key": "photo4_id",    "q": "📷 Фото #4 — *полный рост*. Пришлите фото как изображение.", "type": "photo", "slot": 4},
+    {"key": "skills",       "q": "🧠 **Специальные навыки** \n (Опишите коротко все свои навыки, через запятую: фехтование, акробатика, вождение авто)", "type": "text"},
+    {"key": "photo1_id",    "q": "📷 Фото #1 — **анфас**. Пришлите фото как изображение.", "type": "photo", "slot": 1},
+    {"key": "photo2_id",    "q": "📷 Фото #2 — **профиль**. Пришлите фото как изображение.", "type": "photo", "slot": 2},
+    {"key": "photo3_id",    "q": "📷 Фото #3 — **3/4**. Пришлите фото как изображение.", "type": "photo", "slot": 3},
+    {"key": "photo4_id",    "q": "📷 Фото #4 — **полный рост**. Пришлите фото как изображение.", "type": "photo", "slot": 4},
 ]
 # Читаемые названия для кнопок точечного редактирования
 FIELD_LABELS = {
@@ -690,7 +802,9 @@ FIELD_LABELS = {
     "body_type": "Телосложение",
     "height_cm": "Рост",
     "weight_kg": "Вес",
-    "hair": "Волосы",
+    "hair_color": "Цвет волос",
+    "hair_type": "Тип волос",
+    "eye_color": "Цвет глаз",
     "languages": "Языки",
     "video_vizitka": "Видеовизитка",
     "showreel": "Шоурил",
@@ -698,6 +812,7 @@ FIELD_LABELS = {
     "projects": "Проекты/опыт",
     "phone": "Телефон",
     "instagram": "Instagram",
+    "skills": "Специальные навыки",
 }
 
 # Список редактируемых по одному полей (все, кроме фото)
@@ -735,7 +850,9 @@ def prefill_answers_from_user(u: Dict[str, Any]) -> Dict[str, Any]:
         "body_type":    u.get("body_type") or "",
         "height_cm":    u.get("height_cm") if u.get("height_cm") is not None else "",
         "weight_kg":    u.get("weight_kg") if u.get("weight_kg") is not None else "",
-        "hair":         u.get("hair") or "",
+        "hair_color":   u.get("hair_color") or "",
+        "hair_type":    u.get("hair_type") or "",
+        "eye_color":    u.get("eye_color") or "",
         "languages":    [s.strip() for s in langs.split(",") if s.strip()],
         "video_vizitka":u.get("video_vizitka") or "",
         "showreel":     u.get("showreel") or "",
@@ -743,6 +860,7 @@ def prefill_answers_from_user(u: Dict[str, Any]) -> Dict[str, Any]:
         "projects":     u.get("projects") or "",
         "phone":        u.get("phone") or "",
         "instagram":    u.get("instagram") or "",
+        "skills":       u.get("skills") or "",
         "photo1_id":    u.get("photo1_id") or "",
         "photo2_id":    u.get("photo2_id") or "",
         "photo3_id":    u.get("photo3_id") or "",
@@ -835,7 +953,7 @@ async def render_step(uid: int, chat_id: int):
             buttons.append([Button.inline(f"{mark} {opt}", payload)])
 
         buttons.append([Button.inline("💾 Сохранить", f"multi_done:{key}".encode("utf-8"))])
-        buttons += build_controls(can_back=can_back)   # <— было (i > 0)
+        buttons += build_controls(can_back=can_back)
         await render_text(uid, chat_id, title, buttons=buttons)
         return
     # -----------------------------------------------------------------------
@@ -852,7 +970,43 @@ async def render_step(uid: int, chat_id: int):
         if row:
             buttons.append(row)
 
-    buttons += build_controls(can_back=can_back)  # <— было (i > 0)
+    if step.get("type") == "url-or-skip" or step.get("key") == "projects":
+        buttons.insert(0, [Button.inline("⏭ Пропустить", f"skip:{step['key']}".encode("utf-8"))])
+    buttons += build_controls(can_back=can_back)
+
+    # ---- Инструкции с изображением -----------------------------------------
+    instruction_map = {
+        "photo1_id": "first_instruction.png",
+        "photo2_id": "second_instruction.png",
+        "photo3_id": "third_instruction.png",
+        "photo4_id": "fourth_instruction.png",
+    }
+    file_name = instruction_map.get(step["key"])
+    if file_name:
+        instruction_path = Path(__file__).parent / "assets" / file_name
+        if instruction_path.exists():
+            try:
+                # Удаляем старое сообщение, если оно есть
+                old_id = st.get("screen_id")
+                if old_id:
+                    try:
+                        await client.delete_messages(chat_id, old_id)
+                    except Exception as e:
+                        print(f"⚠️ Не удалось удалить старое сообщение: {e}")
+
+                # Отправляем новое сообщение с картинкой
+                msg = await client.send_file(
+                    chat_id,
+                    file=str(instruction_path),
+                    caption=header,
+                    buttons=buttons,
+                )
+                st["screen_id"] = msg.id
+                return
+            except Exception as e:
+                print(f"❌ Ошибка при отправке инструкции с фото: {e}")
+    # ------------------------------------------------------------------------
+
     await render_text(uid, chat_id, header, buttons=buttons)
 
 async def advance_or_finish(uid: int, chat_id: int):
@@ -973,6 +1127,41 @@ async def cleanup_webapp_leftovers(chat_id: int, limit: int = 50):
 client = TelegramClient("user_reg_bot", API_ID, API_HASH).start(bot_token=BOT_TOKEN)
 
 # ------- CONSENT handlers ---------------------------------------------------
+# добавь это рядом с остальными хэндлерами
+def _check_webapp_sig(uid: int, ts: str, sig: str) -> bool:
+    if not WEBAPP_SIGNING_SECRET:
+        return True
+    try:
+        msg = f"{uid}:{ts}".encode("utf-8")
+        expect = hmac.new(WEBAPP_SIGNING_SECRET.encode("utf-8"), msg, hashlib.sha256).hexdigest()
+        # защита от подмены и протухания
+        fresh = abs(int(time.time()) - int(ts)) <= 3600  # 1 час
+        return fresh and hmac.compare_digest(expect, sig)
+    except Exception:
+        return False
+
+@client.on(events.NewMessage(pattern=r"^/start (.+)$"))
+async def start_with_payload(ev: events.NewMessage.Event):
+    payload = ev.pattern_match.group(1)
+    # ожидаем: sub_ok:<uid>:<ts>:<sig>
+    if payload.startswith("sub_ok:"):
+        parts = payload.split(":")
+        if len(parts) == 4:
+            _, uid_s, ts, sig = parts
+            try:
+                uid_int = int(uid_s)
+            except Exception:
+                uid_int = 0
+            if uid_int == ev.sender_id and _check_webapp_sig(uid_int, ts, sig):
+                set_sub_status(uid_int, "active")
+                await render_menu(ev.chat_id, uid_int)
+                return
+    # если пэйлоад не наш — можешь показать обычное меню:
+    await render_menu(ev.chat_id, ev.sender_id)
+
+@client.on(events.CallbackQuery(data=b"apply_unavailable"))
+async def apply_unavailable(ev: events.CallbackQuery.Event):
+    await ev.answer("Контакт в объявлении не найден. Листайте дальше ⏭ или откликнитесь вручную.", alert=False)
 
 @client.on(events.CallbackQuery(pattern=b"^consent_ok:"))
 async def consent_ok(ev: events.CallbackQuery.Event):
@@ -1029,7 +1218,7 @@ async def open_tariff(ev: events.CallbackQuery.Event):
 
         kb = {
             "inline_keyboard": [
-                [{ "text": "⚡ Подключить тариф", "web_app": { "url": url } }],
+                [{ "text": "⚡ Подключить ИИ-кастинг агента", "web_app": { "url": url } }],
                 [{ "text": "⬅️ Назад", "callback_data": "webapp_back" }]
             ]
         }
@@ -1103,6 +1292,43 @@ async def answer_choice(ev: events.CallbackQuery.Event):
         if key != step["key"]:
             return
         st["answers"][key] = value
+        st["step"] += 1
+        await advance_or_finish(uid, chat_id)
+    finally:
+        st["busy"] = False
+
+# [ADD] Кнопка «Пропустить» для шагов url-or-skip
+@client.on(events.CallbackQuery(pattern=b"^skip:"))
+async def skip_field(ev: events.CallbackQuery.Event):
+    uid = ev.sender_id
+    chat_id = ev.chat_id
+    st = STATE.setdefault(uid, {"screen_id": None, "album_msg_ids": []})
+
+    # подчистим уведомления
+    await clear_sticky_notices(chat_id, uid, except_id=getattr(ev, "message_id", None))
+
+    if st.get("busy"):
+        return
+    st["busy"] = True
+    try:
+        if "step" not in st:
+            return
+        i = st["step"]
+        if i >= len(STEPS):
+            return
+        step = STEPS[i]
+        key = step["key"]
+
+        raw = ev.data.decode("utf-8", errors="ignore")
+        _, payload_key = raw.split(":", 1)
+        if payload_key != key:
+            return
+
+        # Разрешаем пропуск только для полей типа url-or-skip
+        if step.get("type") != "url-or-skip":
+            return
+
+        st["answers"][key] = ""  # эквивалент "нет"
         st["step"] += 1
         await advance_or_finish(uid, chat_id)
     finally:
@@ -1443,23 +1669,7 @@ async def view_castings(ev: events.CallbackQuery.Event):
     st = STATE.setdefault(uid, {"screen_id": None, "album_msg_ids": []})
 
     # 🔐 ЗАМОК: пропускаем дальше только с активной подпиской
-    def _is_sub_active(user_id: int) -> bool:
-        try:
-            con = sqlite3.connect(DB_PATH)
-            cur = con.cursor()
-            cur.execute("SELECT status FROM subs WHERE user_id=?", (user_id,))
-            row = cur.fetchone()
-            return bool(row and (row[0] or "").lower() == "active")
-        except Exception as e:
-            print("subs check error:", e)
-            return False
-        finally:
-            try:
-                con.close()
-            except Exception:
-                pass
-
-    if not _is_sub_active(uid):
+    if not is_sub_active(uid):
         # При неактивной подписке показываем экран подключения тарифа и выходим
         try:
             await ev.delete()
@@ -1471,7 +1681,7 @@ async def view_castings(ev: events.CallbackQuery.Event):
         await clear_sticky_notices(chat_id, uid, except_id=getattr(ev, "message_id", None))
 
         txt = (
-            "🔒 *Раздел «Смотреть кастинги» доступен с активной подпиской.*\n\n"
+            "🔒 **Раздел «Смотреть кастинги» доступен с активной подпиской.**\n\n"
             "Подключите ИИ-кастинг-агента, чтобы получать **только подходящие** объявления "
             "и откликаться в один клик."
         )
@@ -1636,33 +1846,7 @@ async def go_back(ev: events.CallbackQuery.Event):
 
         # 1a) На случай рестарта процесса: подчистим ВСЕ "висячие" webapp-сообщения
         #     (те, у которых есть кнопка с callback_data == webapp_back, либо характерный заголовок)
-        async def _cleanup_webapp_leftovers():
-            try:
-                def _is_webapp_msg_local(msg) -> bool:
-                    try:
-                        # по кнопке "Назад" из webapp
-                        btns = getattr(msg, "buttons", None)
-                        if btns:
-                            for row in btns:
-                                for b in row:
-                                    if getattr(b, "data", b"") == b"webapp_back":
-                                        return True
-                        # по заголовку
-                        t = (msg.raw_text or "").strip()
-                        if t.startswith("⚡ *Подключение тарифа*") or t.startswith("⚡ Подключение тарифа"):
-                            return True
-                    except Exception:
-                        pass
-                    return False
-
-                recent = await client.get_messages(chat_id, limit=50)
-                to_del = [m.id for m in recent if _is_webapp_msg_local(m)]
-                if to_del:
-                    await client.delete_messages(chat_id, to_del, revoke=True)
-            except Exception:
-                pass
-
-        await _cleanup_webapp_leftovers()
+        await cleanup_webapp_leftovers(chat_id)
 
         # 2) Снесём «текущий экран» (если мы его рендерили Telethon'ом)
         await delete_current_screen(chat_id, uid)
@@ -1999,7 +2183,7 @@ async def show_profile_screen(
     buttons = [
         [Button.inline("✏️ Редактировать", b"edit_profile")],
         [Button.inline("📰 Смотреть кастинги", b"view_castings")],
-        [Button.inline("⚡ Подключить тариф", b"open_tariff")],
+        [Button.inline("⚡ Подключить ИИ-кастинг агента", b"open_tariff")],
         [Button.inline("🏠 Главное меню", b"home")],
     ]
     await render_text(uid, chat_id, txt, buttons=buttons)

@@ -79,15 +79,17 @@ def _short_user_summary(u: Dict[str, Any]) -> str:
 
 # ---------- prompt ----------
 def build_match_prompt(profile: Dict[str, Any], casting_text: str) -> str:
-    sex       = _val(profile.get("sex"))
-    cities    = _val(profile.get("cities"))
-    age_range = _val(profile.get("age_range"))
-    look_type = _val(profile.get("look_type"))
-    body_type = _val(profile.get("body_type"))
-    height_cm = _val(profile.get("height_cm"))
-    weight_kg = _val(profile.get("weight_kg"))
-    hair      = _val(profile.get("hair"))
-    languages = _val(profile.get("languages"))
+    sex         = _val(profile.get("sex"))
+    cities      = _val(profile.get("cities"))
+    age_range   = _val(profile.get("age_range"))
+    look_type   = _val(profile.get("look_type"))
+    body_type   = _val(profile.get("body_type"))
+    height_cm   = _val(profile.get("height_cm"))
+    weight_kg   = _val(profile.get("weight_kg"))
+    hair_color  = _val(profile.get("hair_color"))
+    hair_type   = _val(profile.get("hair_type"))
+    eye_color   = _val(profile.get("eye_color"))
+    languages   = _val(profile.get("languages"))
 
     return (
         "У тебя есть кастинг и актёрский профиль. "
@@ -106,7 +108,6 @@ def build_match_prompt(profile: Dict[str, Any], casting_text: str) -> str:
         f"Телосложение: {body_type}\n"
         f"Рост: {height_cm}\n"
         f"Вес: {weight_kg}\n"
-        f"Волосы: {hair}\n"
         f"Языки: {languages}\n\n"
         f"=== КАСТИНГ ===\n{casting_text}\n\n"
         "Ответ: "

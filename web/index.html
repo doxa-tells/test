@@ -517,27 +517,50 @@
     async function cancelSubscription() {
       const uid = String(getAccountId());
       let subId = (localStorage.getItem("ttp_subscription_id") || "").trim();
+      console.log("Cancel: initial uid=", uid, "stored subId=", subId);
       // Если нет сохранённого — попытаемся найти активную по accountId
       if (!subId) {
         try {
           const rFind = await fetch(API_SUB_FIND, { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ accountId: uid }) });
           const jFind = await rFind.json().catch(()=>({}));
+          console.log("Cancel: find by uid result", jFind);
           const list = jFind?.Model || jFind?.model || [];
           if (Array.isArray(list) && list.length) {
-            // Предпочтительно активную; иначе первую
             const active = list.find(x => (x?.Status || x?.status) === "Active");
             subId = (active?.Id || list[0]?.Id || "").trim();
             if (subId) localStorage.setItem("ttp_subscription_id", subId);
           }
-        } catch (_) {}
+        } catch (e) { console.warn("Cancel: find by uid failed", e); }
+      }
+      // Если всё ещё пусто — попросим accountId вручную и попробуем ещё раз
+      if (!subId) {
+        const manualUid = (prompt("Введите ваш AccountId (обычно ваш Telegram ID)", uid) || "").trim();
+        if (manualUid) {
+          try {
+            const rFind2 = await fetch(API_SUB_FIND, { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ accountId: manualUid }) });
+            const jFind2 = await rFind2.json().catch(()=>({}));
+            console.log("Cancel: find by manual uid result", jFind2);
+            const list2 = jFind2?.Model || jFind2?.model || [];
+            if (Array.isArray(list2) && list2.length) {
+              const active2 = list2.find(x => (x?.Status || x?.status) === "Active");
+              subId = (active2?.Id || list2[0]?.Id || "").trim();
+              if (subId) localStorage.setItem("ttp_subscription_id", subId);
+            }
+          } catch (e) { console.warn("Cancel: find by manual uid failed", e); }
+        }
+      }
+      // Последний шанс — спросить Id подписки
+      if (!subId) {
+        subId = (prompt("Введите идентификатор подписки (sc_...)", "") || "").trim();
       }
       if (!subId) {
-        alert("Подписка не найдена. Убедитесь, что оплата оформлена под этим аккаунтом.");
+        alert("Подписка не найдена. Проверьте аккаунт или Id подписки.");
         return;
       }
       try {
         const r = await fetch(API_SUB_CANCEL, { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ Id: subId }) });
         const j = await r.json().catch(()=>({}));
+        console.log("Cancel: cancel result", r.status, j);
         if (r.ok && (j?.Success === true || j?.success === true)) {
           alert("Подписка отменена.");
           localStorage.removeItem("ttp_subscription_id");
@@ -545,6 +568,7 @@
           alert("Не удалось отменить подписку. Проверьте Id и попробуйте снова.");
         }
       } catch (e) {
+        console.warn("Cancel: network error", e);
         alert("Ошибка сети при отмене подписки.");
       }
     }

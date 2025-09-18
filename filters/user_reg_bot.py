@@ -262,21 +262,63 @@ def store_consent(uid: int):
 # ---- подписка: хелперы -----------------------------------------------------
 
 def get_sub_status(uid: int) -> str:
-    con = sqlite3.connect(DB_PATH); cur = con.cursor()
-    cur.execute("SELECT status FROM subs WHERE user_id=?", (uid,))
-    row = cur.fetchone()
-    con.close()
-    return (row[0] if row else "inactive")
+    con = sqlite3.connect(DB_PATH)
+    cur = con.cursor()
+    try:
+        cur.execute("SELECT status FROM subs WHERE user_id=?", (uid,))
+        row = cur.fetchone()
+        return (row[0] if row else "inactive")
+    except sqlite3.OperationalError as e:
+        try:
+            # отсутствует таблица — создадим схему и вернём inactive
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS subs (
+                    user_id   INTEGER PRIMARY KEY,
+                    status    TEXT NOT NULL CHECK(status IN ('active','inactive')),
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+            con.commit()
+        except Exception:
+            pass
+        return "inactive"
+    finally:
+        con.close()
 
 def set_sub_status(uid: int, status: str):
     status = "active" if status == "active" else "inactive"
     con = sqlite3.connect(DB_PATH); cur = con.cursor()
-    cur.execute(
-        "INSERT INTO subs(user_id, status, updated_at) VALUES(?, ?, ?) "
-        "ON CONFLICT(user_id) DO UPDATE SET status=excluded.status, updated_at=excluded.updated_at",
-        (uid, status, datetime.utcnow().isoformat())
-    )
-    con.commit(); con.close()
+    try:
+        cur.execute(
+            "INSERT INTO subs(user_id, status, updated_at) VALUES(?, ?, ?) "
+            "ON CONFLICT(user_id) DO UPDATE SET status=excluded.status, updated_at=excluded.updated_at",
+            (uid, status, datetime.utcnow().isoformat())
+        )
+        con.commit()
+    except sqlite3.OperationalError:
+        try:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS subs (
+                    user_id   INTEGER PRIMARY KEY,
+                    status    TEXT NOT NULL CHECK(status IN ('active','inactive')),
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+            con.commit()
+            cur.execute(
+                "INSERT INTO subs(user_id, status, updated_at) VALUES(?, ?, ?) "
+                "ON CONFLICT(user_id) DO UPDATE SET status=excluded.status, updated_at=excluded.updated_at",
+                (uid, status, datetime.utcnow().isoformat())
+            )
+            con.commit()
+        except Exception:
+            pass
+    finally:
+        con.close()
 
 def is_sub_active(uid: int) -> bool:
     return get_sub_status(uid) == "active"

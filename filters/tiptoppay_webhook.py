@@ -23,7 +23,7 @@ app = FastAPI(title="TipTopPay Webhook")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in ALLOWED_ORIGINS if o.strip()],
-    allow_methods=["GET"],
+    allow_methods=["GET","POST","OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -146,6 +146,55 @@ def make_webapp_sig(uid: str, ts: str) -> str:
     msg = f"{uid}:{ts}".encode("utf-8")
     return hmac.new(WEBAPP_SIGNING_SECRET.encode("utf-8"), msg, hashlib.sha256).hexdigest()
 
+# === TipTopPay API клиент ===
+# Конфиг из окружения
+TIPTOP_API_BASE = os.getenv("TIPTOP_API_BASE", "https://api.tiptoppay.kz").rstrip("/")
+TIPTOP_API_LOGIN = os.getenv("TIPTOP_API_LOGIN", "")
+TIPTOP_API_AUTH_SCHEME = os.getenv("TIPTOP_API_AUTH_SCHEME", "password").lower()  # password|basic|bearer
+TIPTOP_API_BEARER = os.getenv("TIPTOP_API_BEARER", "")
+
+# Ленивая импорт-инициализация httpx
+_httpx = None
+
+def _get_httpx():
+    global _httpx
+    if _httpx is None:
+        import httpx  # импортим только при использовании
+        _httpx = httpx
+    return _httpx
+
+def _build_headers() -> dict:
+    headers = {"Content-Type": "application/json"}
+    # Разные варианты авторизации — настраиваются через env
+    if TIPTOP_API_AUTH_SCHEME == "basic" and TIPTOP_API_LOGIN and TIPTOP_API_PASSWORD:
+        # httpx сам выставит заголовок Authorization для auth=(user, pass)
+        pass
+    elif TIPTOP_API_AUTH_SCHEME == "bearer" and TIPTOP_API_BEARER:
+        headers["Authorization"] = f"Bearer {TIPTOP_API_BEARER}"
+    elif TIPTOP_API_PASSWORD:
+        # Часто TipTopPay принимает пароль терминала через X-API-Password или аналог
+        headers["X-API-Password"] = TIPTOP_API_PASSWORD
+    return headers
+
+async def _ttp_post(path: str, payload: dict) -> tuple[int, dict]:
+    httpx = _get_httpx()
+    url = f"{TIPTOP_API_BASE}{path}"
+    headers = _build_headers()
+    auth = None
+    if TIPTOP_API_AUTH_SCHEME == "basic" and TIPTOP_API_LOGIN and TIPTOP_API_PASSWORD:
+        auth = (TIPTOP_API_LOGIN, TIPTOP_API_PASSWORD)
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            r = await client.post(url, json=payload, headers=headers, auth=auth)
+            data = {}
+            try:
+                data = r.json()
+            except Exception:
+                data = {"raw": r.text}
+            return r.status_code, data
+    except Exception as e:
+        return 0, {"success": False, "message": str(e)}
+
 # === Endpoints ===
 @app.get("/healthz")
 def healthz():
@@ -159,6 +208,50 @@ async def sign(uid: str):
     ts = str(int(datetime.utcnow().timestamp()))
     sig = make_webapp_sig(uid, ts)
     return {"ts": ts, "sig": sig}
+
+# === Proxy TipTopPay: Subscriptions ===
+@app.post("/api/tiptoppay/subscriptions/create")
+async def ttp_subscriptions_create(request: Request):
+    body = await request.json()
+    code, data = await _ttp_post("/subscriptions/create", body)
+    return JSONResponse(data, status_code=(code or 502))
+
+@app.post("/api/tiptoppay/subscriptions/get")
+async def ttp_subscriptions_get(request: Request):
+    body = await request.json()
+    code, data = await _ttp_post("/subscriptions/get", body)
+    return JSONResponse(data, status_code=(code or 502))
+
+@app.post("/api/tiptoppay/subscriptions/find")
+async def ttp_subscriptions_find(request: Request):
+    body = await request.json()
+    code, data = await _ttp_post("/subscriptions/find", body)
+    return JSONResponse(data, status_code=(code or 502))
+
+@app.post("/api/tiptoppay/subscriptions/update")
+async def ttp_subscriptions_update(request: Request):
+    body = await request.json()
+    code, data = await _ttp_post("/subscriptions/update", body)
+    return JSONResponse(data, status_code=(code or 502))
+
+@app.post("/api/tiptoppay/subscriptions/cancel")
+async def ttp_subscriptions_cancel(request: Request):
+    body = await request.json()
+    code, data = await _ttp_post("/subscriptions/cancel", body)
+    return JSONResponse(data, status_code=(code or 502))
+
+# === Proxy TipTopPay: Orders ===
+@app.post("/api/tiptoppay/orders/create")
+async def ttp_orders_create(request: Request):
+    body = await request.json()
+    code, data = await _ttp_post("/orders/create", body)
+    return JSONResponse(data, status_code=(code or 502))
+
+@app.post("/api/tiptoppay/orders/cancel")
+async def ttp_orders_cancel(request: Request):
+    body = await request.json()
+    code, data = await _ttp_post("/orders/cancel", body)
+    return JSONResponse(data, status_code=(code or 502))
 
 @app.api_route("/api/tiptoppay/webhook", methods=["GET", "POST"])
 async def tiptoppay_webhook(

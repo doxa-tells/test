@@ -412,6 +412,7 @@
     const API_SIGN = "/api/sign"; // вариант B: сервер отдаёт ts/sig для deep-link
     const API_SUB_CREATE = "/api/tiptoppay/subscriptions/create";
     const API_SUB_CANCEL = "/api/tiptoppay/subscriptions/cancel";
+    const API_SUB_FIND   = "/api/tiptoppay/subscriptions/find";
 
     function readUidFromTgWebApp() {
       try { return window.Telegram?.WebApp?.initDataUnsafe?.user?.id || null; } catch (e) { return null; }
@@ -512,14 +513,28 @@
       startSubscription();
     });
 
-    // Отмена подписки: берём Id из localStorage или спрашиваем у пользователя
+    // Отмена подписки: берём Id из localStorage или ищем по accountId
     async function cancelSubscription() {
-      let subId = localStorage.getItem("ttp_subscription_id") || "";
+      const uid = String(getAccountId());
+      let subId = (localStorage.getItem("ttp_subscription_id") || "").trim();
+      // Если нет сохранённого — попытаемся найти активную по accountId
       if (!subId) {
-        subId = prompt("Введите идентификатор подписки (sc_...)", "") || "";
+        try {
+          const rFind = await fetch(API_SUB_FIND, { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ accountId: uid }) });
+          const jFind = await rFind.json().catch(()=>({}));
+          const list = jFind?.Model || jFind?.model || [];
+          if (Array.isArray(list) && list.length) {
+            // Предпочтительно активную; иначе первую
+            const active = list.find(x => (x?.Status || x?.status) === "Active");
+            subId = (active?.Id || list[0]?.Id || "").trim();
+            if (subId) localStorage.setItem("ttp_subscription_id", subId);
+          }
+        } catch (_) {}
       }
-      subId = (subId || "").trim();
-      if (!subId) { return; }
+      if (!subId) {
+        alert("Подписка не найдена. Убедитесь, что оплата оформлена под этим аккаунтом.");
+        return;
+      }
       try {
         const r = await fetch(API_SUB_CANCEL, { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ Id: subId }) });
         const j = await r.json().catch(()=>({}));

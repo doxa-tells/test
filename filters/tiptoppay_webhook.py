@@ -283,6 +283,13 @@ async def ttp_subscriptions_cancel_by_account(request: Request):
         return JSONResponse({"Success": False, "Message": "subscription Id not found"}, status_code=500)
     # 2) cancel
     code_cancel, data_cancel = await _ttp_post("/subscriptions/cancel", {"Id": sub_id})
+    # Если успешно отменили — синхронизируем локальную БД, чтобы бот сразу потерял доступ
+    try:
+        if code_cancel == 200 and isinstance(data_cancel, dict) and (data_cancel.get("Success") is True or data_cancel.get("success") is True):
+            ensure_db()
+            set_sub_status(account_id, "inactive")
+    except Exception:
+        pass
     return JSONResponse(data_cancel, status_code=(code_cancel or 502))
 
 # === Proxy TipTopPay: Orders ===

@@ -16,6 +16,8 @@ DB_PATH = os.getenv(
     os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "actors.db"))
 )
 TIPTOP_API_PASSWORD = os.getenv("TIPTOP_API_PASSWORD", "")
+# Делать ли подпись обязательной. По умолчанию ВЫКЛ (совместимость с TipTopPay кабинетами без заголовка подписи)
+TIPTOP_SIGNATURE_REQUIRED = os.getenv("TIPTOP_SIGNATURE_REQUIRED", "0").lower() in ("1","true","yes","on")
 
 app = FastAPI(title="TipTopPay Webhook")
 
@@ -76,12 +78,15 @@ def signatures_equal(a: str | None, b: str | None) -> bool:
 async def verify_signature(request: Request, x_content_hmac: str | None, content_hmac: str | None) -> bool:
     if not TIPTOP_API_PASSWORD:
         return True  # dev режим
+    provided = x_content_hmac or content_hmac
+    # Если подпись не обязательна и её нет — пропускаем
+    if not provided and not TIPTOP_SIGNATURE_REQUIRED:
+        return True
     if request.method.upper() == "GET":
         expected = _hmac_base64(TIPTOP_API_PASSWORD, _raw_string_for_get(request))
     else:
         raw = await request.body()
         expected = _hmac_base64(TIPTOP_API_PASSWORD, raw)
-    provided = x_content_hmac or content_hmac
     return signatures_equal(provided, expected)
 
 # === Извлечение AccountId (только numeric TG-id) ===

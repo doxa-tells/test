@@ -99,7 +99,6 @@ def init_db():
             body_type TEXT,
             height_cm INTEGER,
             weight_kg INTEGER,
-            hair TEXT,
             hair_color TEXT,
             hair_type TEXT,
             eye_color TEXT,

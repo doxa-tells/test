@@ -1,0 +1,21 @@
+export type Actor = {
+  user_id: number;
+  full_name: string | null;
+  sex: string | null;
+  age_range: string | null;
+  look_type: string | null;
+  body_type: string | null;
+  height_cm: number | null;
+  weight_kg: number | null;
+  hair_color: string | null;
+  hair_type: string | null;
+  eye_color: string | null;
+  cities: string | null;
+  languages: string | null;
+  instagram: string | null;
+  video_vizitka: string | null;
+  showreel: string | null;
+  portfolio: string | null;
+  projects: string | null;
+  updated_at: string | null;
+};

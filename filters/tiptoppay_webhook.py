@@ -2,7 +2,7 @@
 # Запуск: uvicorn tiptoppay_webhook:app --host 0.0.0.0 --port 8000
 
 import os, hmac, hashlib, base64, json, sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from fastapi import FastAPI, Request, Header
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,6 +18,14 @@ DB_PATH = os.getenv(
 TIPTOP_API_PASSWORD = os.getenv("TIPTOP_API_PASSWORD", "")
 # Делать ли подпись обязательной. По умолчанию ВЫКЛ (совместимость с TipTopPay кабинетами без заголовка подписи)
 TIPTOP_SIGNATURE_REQUIRED = os.getenv("TIPTOP_SIGNATURE_REQUIRED", "0").lower() in ("1","true","yes","on")
+
+# === Параметры подписки по умолчанию (для авто-создания при Pay/Confirm с токеном) ===
+SUB_AMOUNT = float(os.getenv("TIPTOP_SUB_AMOUNT", "3490"))
+SUB_CURRENCY = os.getenv("TIPTOP_SUB_CURRENCY", "KZT")
+SUB_INTERVAL = os.getenv("TIPTOP_SUB_INTERVAL", "Month")  # Day|Week|Month
+SUB_PERIOD = int(os.getenv("TIPTOP_SUB_PERIOD", "1"))
+SUB_REQUIRE_CONFIRMATION = os.getenv("TIPTOP_SUB_REQUIRE_CONFIRMATION", "0").lower() in ("1","true","yes","on")
+SUB_START_OFFSET_DAYS = int(os.getenv("TIPTOP_SUB_START_OFFSET_DAYS", "30"))  # через сколько дней начать рекуррент
 
 app = FastAPI(title="TipTopPay Webhook")
 
@@ -301,6 +309,32 @@ async def tiptoppay_webhook(
             set_sub_status(uid, new_status)
         except Exception:
             return JSONResponse({"code": 500, "message": "db error"}, status_code=500)
+
+    # 5.1) Автосоздание подписки при первичной оплате, если пришёл карточный токен
+    try:
+        token = (
+            payload.get("CardToken") or payload.get("cardToken") or payload.get("token")
+            or (payload.get("data") or {}).get("CardToken")
+        )
+        if token and uid:
+            # Собираем параметры подписки по умолчанию
+            start_dt = datetime.utcnow() + timedelta(days=SUB_START_OFFSET_DAYS)
+            start_iso = start_dt.replace(microsecond=0).isoformat()
+            sub_payload = {
+                "token": str(token),
+                "accountId": str(uid),
+                "description": "Ежемесячная подписка на Roletapp AI",
+                "amount": SUB_AMOUNT,
+                "Currency": SUB_CURRENCY,
+                "requireConfirmation": SUB_REQUIRE_CONFIRMATION,
+                "startDate": start_iso,
+                "interval": SUB_INTERVAL,
+                "period": SUB_PERIOD,
+            }
+            # Пробуем создать рекуррент (ошибку не пробрасываем в ответ вебхука)
+            await _ttp_post("/subscriptions/create", sub_payload)
+    except Exception:
+        pass
 
     # 6) Успешный ответ
     return JSONResponse({"code": 0})

@@ -76,12 +76,13 @@ def signatures_equal(a: str | None, b: str | None) -> bool:
     return hmac.compare_digest(a, b)
 
 async def verify_signature(request: Request, x_content_hmac: str | None, content_hmac: str | None) -> bool:
-    if not TIPTOP_API_PASSWORD:
-        return True  # dev режим
-    provided = x_content_hmac or content_hmac
-    # Если подпись не обязательна и её нет — пропускаем
-    if not provided and not TIPTOP_SIGNATURE_REQUIRED:
+    # Если проверка подписи не обязательна — пропускаем всегда
+    if not TIPTOP_SIGNATURE_REQUIRED:
         return True
+    # dev-режим: если нет пароля — пропускаем
+    if not TIPTOP_API_PASSWORD:
+        return True
+    provided = x_content_hmac or content_hmac
     if request.method.upper() == "GET":
         expected = _hmac_base64(TIPTOP_API_PASSWORD, _raw_string_for_get(request))
     else:

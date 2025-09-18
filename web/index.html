@@ -410,6 +410,8 @@
     const AMOUNT_MONTHLY = 3490;  // далее
 
     const API_SIGN = "/api/sign"; // вариант B: сервер отдаёт ts/sig для deep-link
+    const API_SUB_CREATE = "/api/tiptoppay/subscriptions/create";
+    const API_SUB_CANCEL = "/api/tiptoppay/subscriptions/cancel";
 
     function readUidFromTgWebApp() {
       try { return window.Telegram?.WebApp?.initDataUnsafe?.user?.id || null; } catch (e) { return null; }
@@ -438,12 +440,6 @@
       }
 
       const uid = String(getAccountId());
-
-      // вариант B: требуем числовой Telegram ID (веб-uid не подойдёт для подписки)
-      if (!/^\d+$/.test(uid)) {
-        alert("Откройте оплату из Telegram (мини-приложение), чтобы мы связали подписку с вашим аккаунтом.");
-        return;
-      }
 
       // вариант B: запрашиваем подпись (ts/sig) для последующей связки
       let ts = "", sig = "";
@@ -477,6 +473,34 @@
       try {
         const res = await widget.start(params);
         console.log("TipTopPay result:", res);
+        // Если виджет вернул карточный токен — создаём подписку сервером
+        const token = res?.cardToken || res?.token || res?.CardToken;
+        if (token) {
+          // План: начать регулярные списания со следующего месяца
+          const startDate = new Date();
+          startDate.setMonth(startDate.getMonth() + 1);
+          const startIso = startDate.toISOString().slice(0,19);
+          const payload = {
+            token: String(token),
+            accountId: uid,
+            description: "Ежемесячная подписка на Roletapp AI",
+            email: undefined,
+            amount: AMOUNT_MONTHLY,
+            Currency: CURRENCY,
+            requireConfirmation: false,
+            startDate: startIso,
+            interval: "Month",
+            period: 1
+          };
+          try {
+            const r = await fetch(API_SUB_CREATE, { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(payload) });
+            const j = await r.json().catch(()=>({}));
+            const subId = j?.Model?.Id || j?.model?.id || j?.Id;
+            if (subId) {
+              localStorage.setItem("ttp_subscription_id", String(subId));
+            }
+          } catch (e) { console.warn("Sub create failed", e); }
+        }
       } catch (err) {
         console.error("TipTopPay error:", err);
         alert("Оплата не запустилась. Попробуйте ещё раз или используйте другой способ.");
@@ -486,6 +510,33 @@
     document.getElementById("payBtn")?.addEventListener("click", function (e) {
       e.preventDefault();
       startSubscription();
+    });
+
+    // Отмена подписки: берём Id из localStorage или спрашиваем у пользователя
+    async function cancelSubscription() {
+      let subId = localStorage.getItem("ttp_subscription_id") || "";
+      if (!subId) {
+        subId = prompt("Введите идентификатор подписки (sc_...)", "") || "";
+      }
+      subId = (subId || "").trim();
+      if (!subId) { return; }
+      try {
+        const r = await fetch(API_SUB_CANCEL, { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ Id: subId }) });
+        const j = await r.json().catch(()=>({}));
+        if (r.ok && (j?.Success === true || j?.success === true)) {
+          alert("Подписка отменена.");
+          localStorage.removeItem("ttp_subscription_id");
+        } else {
+          alert("Не удалось отменить подписку. Проверьте Id и попробуйте снова.");
+        }
+      } catch (e) {
+        alert("Ошибка сети при отмене подписки.");
+      }
+    }
+
+    document.getElementById("cancelSub")?.addEventListener("click", function (e) {
+      e.preventDefault();
+      cancelSubscription();
     });
   })();
   </script>
@@ -501,7 +552,7 @@
           <span style="opacity:.5">•</span>
           <a href="mailto:telmanov.darkhan@gmail.com" style="text-decoration:none; border-bottom:1px dashed rgba(255,255,255,.35)">Контакты поддержки</a>
           <span style="opacity:.5">•</span>
-          <a href="#" onclick="return false;" style="text-decoration:none; border-bottom:1px dashed rgba(255,255,255,.35)">Отменить подписку</a>
+          <a id="cancelSub" href="#" onclick="return false;" style="text-decoration:none; border-bottom:1px dashed rgba(255,255,255,.35)">Отменить подписку</a>
         </div>
 
         <div style="font-size:12px; color:#9bb0e0; line-height:1.5">

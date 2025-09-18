@@ -397,6 +397,7 @@
   </script>
 
   <!-- TipTop Pay виджет -->
+  <script src="https://telegram.org/js/telegram-web-app.js" defer></script>
   <script src="https://widget.tiptoppay.kz/bundles/widget.js" defer></script>
   <script defer>
   (function () {
@@ -413,9 +414,17 @@
     const API_SUB_CREATE = "/api/tiptoppay/subscriptions/create";
     const API_SUB_CANCEL = "/api/tiptoppay/subscriptions/cancel";
     const API_SUB_FIND   = "/api/tiptoppay/subscriptions/find";
+    const API_SUB_CANCEL_BY_ACCOUNT = "/api/tiptoppay/subscriptions/cancel-by-account";
+
+    // Telegram Mini App readiness (официальная библиотека)
+    try { window.Telegram?.WebApp?.ready?.(); } catch (e) {}
 
     function readUidFromTgWebApp() {
-      try { return window.Telegram?.WebApp?.initDataUnsafe?.user?.id || null; } catch (e) { return null; }
+      try {
+        const id = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
+        if (id && /^\d+$/.test(String(id))) return String(id);
+        return null;
+      } catch (e) { return null; }
     }
 
     function getAccountId() {
@@ -440,7 +449,12 @@
         return;
       }
 
-      const uid = String(getAccountId());
+      // Строгая проверка: только из Telegram Mini App, берём числовой Telegram ID
+      const uid = readUidFromTgWebApp();
+      if (!uid) {
+        alert("Откройте страницу из Telegram Mini App. Зайдите в наш бот и откройте веб-приложение.");
+        return;
+      }
 
       // вариант B: запрашиваем подпись (ts/sig) для последующей связки
       let ts = "", sig = "";
@@ -463,7 +477,7 @@
         amount: AMOUNT_TRIAL,
         currency: CURRENCY,
         description: `Roletapp AI — подписка (первый месяц ${AMOUNT_TRIAL} ₸, далее ${AMOUNT_MONTHLY} ₸/мес)`,
-        userInfo: { accountId: uid },
+        userInfo: { accountId: uid }, // плательщик = Telegram ID
         recurrent: { interval: "Month", period: 1 },
         metadata: { tg_uid: uid, site_id: TIPTOP_SITE_ID, source: "webapp", ts, sig },
         // вариант B: прокидываем uid/ts/sig в redirect, чтобы "thank-you" могла построить deep-link
@@ -513,62 +527,58 @@
       startSubscription();
     });
 
-    // Отмена подписки: берём Id из localStorage или ищем по accountId
+    // Отмена подписки: сначала пробуем по accountId одним вызовом
     async function cancelSubscription() {
-      const uid = String(getAccountId());
+      const tgUid = (function(){ try { return window.Telegram?.WebApp?.initDataUnsafe?.user?.id || null; } catch(e){ return null; } })();
+      if (!tgUid) {
+        alert("Откройте страницу из Telegram Mini App. Зайдите в наш бот и откройте веб-приложение.");
+        return;
+      }
+      const accountId = String(tgUid);
+      try {
+        const r = await fetch(API_SUB_CANCEL_BY_ACCOUNT, {
+          method: "POST",
+          headers: {"Content-Type":"application/json"},
+          body: JSON.stringify({ accountId, preferActive: true })
+        });
+        const j = await r.json().catch(()=>({}));
+        console.log("Cancel: cancel-by-account result", r.status, j);
+        if (r.ok && (j?.Success === true || j?.success === true)) {
+          alert("Подписка отменена.");
+          localStorage.removeItem("ttp_subscription_id");
+          return;
+        }
+      } catch (e) { console.warn("Cancel: cancel-by-account error", e); }
+
+      // Fallback на старую схему: find → cancel
+      const uid = accountId;
       let subId = (localStorage.getItem("ttp_subscription_id") || "").trim();
-      console.log("Cancel: initial uid=", uid, "stored subId=", subId);
-      // Если нет сохранённого — попытаемся найти активную по accountId
-      if (!subId) {
-        try {
+      try {
+        if (!subId) {
           const rFind = await fetch(API_SUB_FIND, { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ accountId: uid }) });
           const jFind = await rFind.json().catch(()=>({}));
-          console.log("Cancel: find by uid result", jFind);
           const list = jFind?.Model || jFind?.model || [];
           if (Array.isArray(list) && list.length) {
             const active = list.find(x => (x?.Status || x?.status) === "Active");
             subId = (active?.Id || list[0]?.Id || "").trim();
             if (subId) localStorage.setItem("ttp_subscription_id", subId);
           }
-        } catch (e) { console.warn("Cancel: find by uid failed", e); }
-      }
-      // Если всё ещё пусто — попросим accountId вручную и попробуем ещё раз
-      if (!subId) {
-        const manualUid = (prompt("Введите ваш AccountId (обычно ваш Telegram ID)", uid) || "").trim();
-        if (manualUid) {
-          try {
-            const rFind2 = await fetch(API_SUB_FIND, { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ accountId: manualUid }) });
-            const jFind2 = await rFind2.json().catch(()=>({}));
-            console.log("Cancel: find by manual uid result", jFind2);
-            const list2 = jFind2?.Model || jFind2?.model || [];
-            if (Array.isArray(list2) && list2.length) {
-              const active2 = list2.find(x => (x?.Status || x?.status) === "Active");
-              subId = (active2?.Id || list2[0]?.Id || "").trim();
-              if (subId) localStorage.setItem("ttp_subscription_id", subId);
-            }
-          } catch (e) { console.warn("Cancel: find by manual uid failed", e); }
         }
-      }
-      // Последний шанс — спросить Id подписки
-      if (!subId) {
-        subId = (prompt("Введите идентификатор подписки (sc_...)", "") || "").trim();
-      }
-      if (!subId) {
-        alert("Подписка не найдена. Проверьте аккаунт или Id подписки.");
-        return;
-      }
-      try {
-        const r = await fetch(API_SUB_CANCEL, { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ Id: subId }) });
-        const j = await r.json().catch(()=>({}));
-        console.log("Cancel: cancel result", r.status, j);
-        if (r.ok && (j?.Success === true || j?.success === true)) {
+        if (!subId) {
+          alert("Подписка не найдена. Проверьте аккаунт или Id подписки.");
+          return;
+        }
+        const r2 = await fetch(API_SUB_CANCEL, { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ Id: subId }) });
+        const j2 = await r2.json().catch(()=>({}));
+        console.log("Cancel: fallback cancel result", r2.status, j2);
+        if (r2.ok && (j2?.Success === true || j2?.success === true)) {
           alert("Подписка отменена.");
           localStorage.removeItem("ttp_subscription_id");
         } else {
           alert("Не удалось отменить подписку. Проверьте Id и попробуйте снова.");
         }
       } catch (e) {
-        console.warn("Cancel: network error", e);
+        console.warn("Cancel: fallback error", e);
         alert("Ошибка сети при отмене подписки.");
       }
     }

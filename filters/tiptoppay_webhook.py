@@ -254,6 +254,37 @@ async def ttp_subscriptions_cancel(request: Request):
     code, data = await _ttp_post("/subscriptions/cancel", body)
     return JSONResponse(data, status_code=(code or 502))
 
+@app.post("/api/tiptoppay/subscriptions/cancel-by-account")
+async def ttp_subscriptions_cancel_by_account(request: Request):
+    body = await request.json()
+    account_id = (body.get("accountId") or body.get("AccountId") or "").strip()
+    prefer_active = bool(body.get("preferActive", True))
+    if not account_id:
+        return JSONResponse({"Success": False, "Message": "accountId is required"}, status_code=400)
+    # 1) find
+    code_find, data_find = await _ttp_post("/subscriptions/find", {"accountId": account_id})
+    if code_find != 200 or not isinstance(data_find, dict):
+        return JSONResponse({"Success": False, "Message": "find failed", "details": data_find}, status_code=code_find or 502)
+    items = data_find.get("Model") or data_find.get("model") or []
+    if not items:
+        return JSONResponse({"Success": False, "Message": "no subscriptions found for accountId"}, status_code=404)
+    # pick target
+    target = None
+    if prefer_active:
+        for it in items:
+            st = (it.get("Status") or it.get("status") or "").strip()
+            if st.lower() == "active":
+                target = it
+                break
+    if not target:
+        target = items[0]
+    sub_id = (target.get("Id") or target.get("id") or "").strip()
+    if not sub_id:
+        return JSONResponse({"Success": False, "Message": "subscription Id not found"}, status_code=500)
+    # 2) cancel
+    code_cancel, data_cancel = await _ttp_post("/subscriptions/cancel", {"Id": sub_id})
+    return JSONResponse(data_cancel, status_code=(code_cancel or 502))
+
 # === Proxy TipTopPay: Orders ===
 @app.post("/api/tiptoppay/orders/create")
 async def ttp_orders_create(request: Request):

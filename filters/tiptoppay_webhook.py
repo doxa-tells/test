@@ -32,6 +32,12 @@ SUB_START_OFFSET_DAYS = int(os.getenv("TIPTOP_SUB_START_OFFSET_DAYS", "30"))  # 
 
 app = FastAPI(title="TipTopPay Webhook")
 
+# Стартовый лог для диагностики пути к БД
+try:
+    print(f"[tiptoppay_webhook] Using DB_PATH={DB_PATH}")
+except Exception:
+    pass
+
 # CORS для фронта, который дергает /api/sign
 app.add_middleware(
     CORSMiddleware,
@@ -392,11 +398,32 @@ async def tiptoppay_webhook(
     # 4) Тип уведомления -> статус
     new_status, notif_type = map_payload_to_status_and_type(payload)
 
+    # Диагностика
+    try:
+        print("[tiptoppay_webhook] incoming:", {
+            "method": request.method,
+            "has_json": isinstance(payload, dict),
+            "keys": list(payload.keys())[:10],
+            "notif_type": notif_type,
+            "uid": uid,
+            "new_status": new_status,
+        })
+    except Exception:
+        pass
+
     # 5) Обновление БД
     if uid and new_status:
         try:
             set_sub_status(uid, new_status)
-        except Exception:
+            try:
+                print(f"[tiptoppay_webhook] set_sub_status uid={uid} -> {new_status}")
+            except Exception:
+                pass
+        except Exception as e:
+            try:
+                print(f"[tiptoppay_webhook] DB error: {e}")
+            except Exception:
+                pass
             return JSONResponse({"code": 500, "message": "db error"}, status_code=500)
 
     # 5.1) Автосоздание подписки при первичной оплате, если пришёл карточный токен

@@ -167,10 +167,12 @@ def map_payload_to_status_and_type(payload: dict) -> tuple[str | None, str | Non
     notif_type ∈ {"Pay","Recurrent","Fail","Cancel","Refund","Confirm", None}
     """
     notif_type = (payload.get("Type") or payload.get("NotificationType") or "").strip() or None
+    op_type = (payload.get("OperationType") or payload.get("operationType") or "").strip() or None
+    status_raw = (payload.get("Status") or payload.get("status") or "").strip()
 
     # Recurrent: периодические списания со статусом подписки
     if ("Interval" in payload or "Period" in payload) or (notif_type == "Recurrent"):
-        status = (payload.get("Status") or "").strip().lower()
+        status = status_raw.lower()
         if status == "active":
             return "active", "Recurrent"
         if status in {"canceled", "cancelled", "deactivated", "inactive", "suspended"}:
@@ -180,6 +182,21 @@ def map_payload_to_status_and_type(payload: dict) -> tuple[str | None, str | Non
     # Первичная успешная оплата / подтверждение
     if notif_type in {"Pay", "Confirm"} or "CardToken" in payload:
         return "active", notif_type or "Pay"
+
+    # Доп. обработка: OperationType от TipTopPay (инвойсы/платежи без Type)
+    if op_type:
+        op = op_type.lower()
+        # Успешные операции оплаты
+        if op in {"payment", "purchase", "charge", "debit", "invoicepaid", "invoice_paid", "confirm"}:
+            return "active", "Pay"
+        # Возможные неуспешные/возврат/отмена
+        if op in {"refund", "cancel", "fail", "failed", "void"}:
+            return "inactive", "Cancel"
+
+    # Если пришёл AccountId и TransactionId/PaymentAmount — считаем успешным платежом (эвристика для их уведомлений)
+    if payload.get("AccountId") or payload.get("accountId"):
+        if ("TransactionId" in payload or "PaymentAmount" in payload or "PaymentCurrency" in payload):
+            return "active", "Pay"
 
     # Ошибки/отмена/возврат — выключаем
     if notif_type in {"Fail", "Cancel", "Refund"}:
@@ -405,6 +422,7 @@ async def tiptoppay_webhook(
             "has_json": isinstance(payload, dict),
             "keys": list(payload.keys())[:10],
             "notif_type": notif_type,
+            "operation_type": (payload.get("OperationType") or payload.get("operationType")),
             "uid": uid,
             "new_status": new_status,
         })

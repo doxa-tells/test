@@ -15,6 +15,9 @@ DB_PATH = os.getenv(
     "DB_PATH",
     os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "actors.db"))
 )
+DB_BUSY_TIMEOUT_MS = int(os.getenv("DB_BUSY_TIMEOUT_MS", "5000"))
+DB_MAX_RETRIES = int(os.getenv("DB_MAX_RETRIES", "5"))
+DB_RETRY_SLEEP_MS = int(os.getenv("DB_RETRY_SLEEP_MS", "200"))
 TIPTOP_API_PASSWORD = os.getenv("TIPTOP_API_PASSWORD", "")
 # Делать ли подпись обязательной. По умолчанию ВЫКЛ (совместимость с TipTopPay кабинетами без заголовка подписи)
 TIPTOP_SIGNATURE_REQUIRED = os.getenv("TIPTOP_SIGNATURE_REQUIRED", "0").lower() in ("1","true","yes","on")
@@ -40,8 +43,14 @@ app.add_middleware(
 # === БД ===
 def ensure_db():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    con = sqlite3.connect(DB_PATH)
+    con = sqlite3.connect(DB_PATH, timeout=max(0.001, DB_BUSY_TIMEOUT_MS/1000))
     cur = con.cursor()
+    try:
+        cur.execute("PRAGMA journal_mode=WAL;")
+        cur.execute("PRAGMA synchronous=NORMAL;")
+        cur.execute(f"PRAGMA busy_timeout={DB_BUSY_TIMEOUT_MS};")
+    except Exception:
+        pass
     cur.execute("""
         CREATE TABLE IF NOT EXISTS subs(
             user_id    INTEGER PRIMARY KEY,
@@ -54,15 +63,34 @@ def ensure_db():
 
 def set_sub_status(uid: str, status: str):
     status = "active" if status == "active" else "inactive"
-    con = sqlite3.connect(DB_PATH)
-    cur = con.cursor()
-    cur.execute(
-        "INSERT INTO subs(user_id, status, updated_at) VALUES(?, ?, ?) "
-        "ON CONFLICT(user_id) DO UPDATE SET status=excluded.status, updated_at=excluded.updated_at",
-        (uid, status, datetime.utcnow().isoformat())
-    )
-    con.commit()
-    con.close()
+    import time as _time
+    attempt = 0
+    while True:
+        try:
+            con = sqlite3.connect(DB_PATH, timeout=max(0.001, DB_BUSY_TIMEOUT_MS/1000))
+            cur = con.cursor()
+            try:
+                cur.execute(f"PRAGMA busy_timeout={DB_BUSY_TIMEOUT_MS};")
+            except Exception:
+                pass
+            cur.execute(
+                "INSERT INTO subs(user_id, status, updated_at) VALUES(?, ?, ?) "
+                "ON CONFLICT(user_id) DO UPDATE SET status=excluded.status, updated_at=excluded.updated_at",
+                (uid, status, datetime.utcnow().isoformat())
+            )
+            con.commit()
+            con.close()
+            break
+        except sqlite3.OperationalError as e:
+            try:
+                con.close()
+            except Exception:
+                pass
+            if "locked" in str(e).lower() and attempt < DB_MAX_RETRIES:
+                _time.sleep(DB_RETRY_SLEEP_MS/1000)
+                attempt += 1
+                continue
+            raise
 
 # === Подпись TipTop Pay: HMAC-SHA256(raw) -> base64, заголовок X-Content-HMAC ===
 def _hmac_base64(secret: str, data: bytes) -> str:

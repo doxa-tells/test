@@ -228,6 +228,15 @@ async def sign(uid: str):
 async def ttp_subscriptions_create(request: Request):
     body = await request.json()
     code, data = await _ttp_post("/subscriptions/create", body)
+    # Если успешное создание и есть accountId — сразу отметим локально active
+    try:
+        if code == 200 and isinstance(data, dict) and (data.get("Success") is True or data.get("success") is True):
+            uid = str(body.get("accountId") or body.get("AccountId") or "").strip()
+            if uid.isdigit():
+                ensure_db()
+                set_sub_status(uid, "active")
+    except Exception:
+        pass
     return JSONResponse(data, status_code=(code or 502))
 
 @app.post("/api/tiptoppay/subscriptions/get")
@@ -252,6 +261,20 @@ async def ttp_subscriptions_update(request: Request):
 async def ttp_subscriptions_cancel(request: Request):
     body = await request.json()
     code, data = await _ttp_post("/subscriptions/cancel", body)
+    # Если отмена успешна и удалось узнать accountId через get — отметим локально inactive
+    try:
+        if code == 200 and isinstance(data, dict) and (data.get("Success") is True or data.get("success") is True):
+            # Попробуем получить accountId через get
+            sub_id = (body.get("Id") or body.get("id") or "").strip()
+            if sub_id:
+                code_get, data_get = await _ttp_post("/subscriptions/get", {"Id": sub_id})
+                model = (isinstance(data_get, dict) and (data_get.get("Model") or data_get.get("model"))) or {}
+                uid = str((model or {}).get("AccountId") or "").strip()
+                if uid.isdigit():
+                    ensure_db()
+                    set_sub_status(uid, "inactive")
+    except Exception:
+        pass
     return JSONResponse(data, status_code=(code or 502))
 
 @app.post("/api/tiptoppay/subscriptions/cancel-by-account")
@@ -371,6 +394,11 @@ async def tiptoppay_webhook(
             }
             # Пробуем создать рекуррент (ошибку не пробрасываем в ответ вебхука)
             await _ttp_post("/subscriptions/create", sub_payload)
+            # и пометим локально active
+            try:
+                ensure_db(); set_sub_status(str(uid), "active")
+            except Exception:
+                pass
     except Exception:
         pass
 

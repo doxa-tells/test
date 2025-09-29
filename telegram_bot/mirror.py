@@ -1,5 +1,6 @@
 from telethon import TelegramClient, events
 from PIL import Image
+import sys
 import os
 from dotenv import load_dotenv
 import requests

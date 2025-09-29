@@ -12,6 +12,7 @@ from shared.isDuplicateCasting import is_duplicate_casting
 from shared.ocr_extractor import extract_text_from_image
 from telegram_bot.format_casting_template import format_casting_template
 from telegram_bot.is_casting_ai import is_casting_ai
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from shared.isDuplicateCasting import is_duplicate_casting
 
 # 🚀 Загрузка переменных

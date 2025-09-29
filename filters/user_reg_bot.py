@@ -828,10 +828,13 @@ STEPS = [
     {"key": "phone",        "q": "📞 **Номер телефона** \n (Пример: +7(777)777-77-77)", "type": "text"},
     {"key": "instagram",    "q": "📸 **Instagram ссылка** \n Пример:\nhttps://www.instagram.com/**doxa.tells**/", "type": "text"},
     {"key": "skills",       "q": "🧠 **Специальные навыки** \n (Опишите коротко все свои навыки, через запятую: фехтование, акробатика, вождение авто)", "type": "text"},
-    {"key": "photo1_id",    "q": "📷 Фото #1 — **анфас**. Пришлите фото как изображение.", "type": "photo", "slot": 1},
-    {"key": "photo2_id",    "q": "📷 Фото #2 — **профиль**. Пришлите фото как изображение.", "type": "photo", "slot": 2},
-    {"key": "photo3_id",    "q": "📷 Фото #3 — **3/4**. Пришлите фото как изображение.", "type": "photo", "slot": 3},
-    {"key": "photo4_id",    "q": "📷 Фото #4 — **полный рост**. Пришлите фото как изображение.", "type": "photo", "slot": 4},
+    {"key": "photo1_id", "q": "📷 Фото #1 — **анфас**. Пришлите фото как изображение.", "type": "photo", "slot": 1},
+    {"key": "photo2_id", "q": "📷 Фото #2 — **профиль**. Пришлите фото как изображение.", "type": "photo", "slot": 2,
+     "optional": True},
+    {"key": "photo3_id", "q": "📷 Фото #3 — **3/4**. Пришлите фото как изображение.", "type": "photo", "slot": 3,
+     "optional": True},
+    {"key": "photo4_id", "q": "📷 Фото #4 — **полный рост**. Пришлите фото как изображение.", "type": "photo", "slot": 4,
+     "optional": True},
 ]
 # Читаемые названия для кнопок точечного редактирования
 FIELD_LABELS = {
@@ -1013,6 +1016,11 @@ async def render_step(uid: int, chat_id: int):
 
     if step.get("type") == "url-or-skip" or step.get("key") == "projects":
         buttons.insert(0, [Button.inline("⏭ Пропустить", f"skip:{step['key']}".encode("utf-8"))])
+
+    # [NEW] Разрешаем пропуск для фото, НО только начиная со 2-й (slot > 1)
+    if step.get("type") == "photo" and int(step.get("slot", 1)) > 1:
+        buttons.insert(0, [Button.inline("⏭ Пропустить", f"skip:{step['key']}".encode("utf-8"))])
+
     buttons += build_controls(can_back=can_back)
 
     # ---- Инструкции с изображением -----------------------------------------
@@ -1359,17 +1367,32 @@ async def skip_field(ev: events.CallbackQuery.Event):
             return
         step = STEPS[i]
         key = step["key"]
+        typ = step.get("type")
 
         raw = ev.data.decode("utf-8", errors="ignore")
         _, payload_key = raw.split(":", 1)
         if payload_key != key:
             return
 
-        # Разрешаем пропуск только для полей типа url-or-skip
-        if step.get("type") != "url-or-skip":
+        if typ == "url-or-skip":
+            # просто очищаем поле и идём дальше
+            st["answers"][key] = ""
+
+        elif typ == "photo":
+            # пропуск фото разрешён только со 2-й по 4-ю
+            slot = int(step.get("slot", 1))
+            if slot <= 1:
+                # первую фотографию пропускать нельзя
+                await ev.answer("Первое фото обязательно 👇", alert=False)
+                return
+            # помечаем, что фото отсутствует
+            st["answers"][key] = ""  # photo{slot}_id
+            st["answers"][f"photo{slot}_tg"] = None
+
+        else:
+            # другие типы не поддерживают пропуск
             return
 
-        st["answers"][key] = ""  # эквивалент "нет"
         st["step"] += 1
         await advance_or_finish(uid, chat_id)
     finally:

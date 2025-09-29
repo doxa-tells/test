@@ -54,13 +54,14 @@ export type CatalogFilters = {
   sex?: string;          // Мужской | Женский
   city?: string;         // подстрока внутри cities
   look_type?: string;
+  body_type?: string;    // фильтр по телосложению
   hair_color?: string;
   eye_color?: string;
   lang?: string;         // подстрока внутри languages
   heightMin?: number;
   heightMax?: number;
-  ageFrom?: number;      // мин. край возрастного диапазона
-  ageTo?: number;        // макс. край возрастного диапазона
+  ageFrom?: number;      // мин. край фильтра
+  ageTo?: number;        // макс. край фильтра
   limit?: number;
   offset?: number;
 };
@@ -68,7 +69,7 @@ export type CatalogFilters = {
 /** Список актёров с фильтрами */
 export function listActors(filters: CatalogFilters = {}): Actor[] {
   const {
-    q, sex, city, look_type, hair_color, eye_color, lang,
+    q, sex, city, look_type, body_type, hair_color, eye_color, lang,
     heightMin, heightMax, ageFrom, ageTo,
     limit = 60, offset = 0,
   } = filters;
@@ -92,6 +93,10 @@ export function listActors(filters: CatalogFilters = {}): Actor[] {
     where.push("look_type = ?");
     args.push(look_type.trim());
   }
+  if (body_type && body_type.trim()) {
+    where.push("body_type = ?");
+    args.push(body_type.trim());
+  }
   if (hair_color && hair_color.trim()) {
     where.push("hair_color = ?");
     args.push(hair_color.trim());
@@ -104,6 +109,7 @@ export function listActors(filters: CatalogFilters = {}): Actor[] {
     where.push("languages LIKE ?");
     args.push(`%${lang.trim()}%`);
   }
+
   if (typeof heightMin === "number" && Number.isFinite(heightMin)) {
     where.push("height_cm >= ?");
     args.push(heightMin);
@@ -112,15 +118,26 @@ export function listActors(filters: CatalogFilters = {}): Actor[] {
     where.push("height_cm <= ?");
     args.push(heightMax);
   }
-  // age_range хранится как "X-Y": парсим левую и правую границы в SQL
-  if (typeof ageFrom === "number" && Number.isFinite(ageFrom)) {
-    where.push("(instr(age_range,'-')>0 AND CAST(substr(age_range,1,instr(age_range,'-')-1) AS INT) >= ?)");
+
+  // ==== Корректная фильтрация по ИНТЕРВАЛУ age_range ====
+  // Нормализуем age_range: убираем пробелы и разные типы дефисов к '-'
+  const AGE = "REPLACE(REPLACE(REPLACE(age_range,' ',''),'–','-'),'—','-')";
+  const AGE_MIN = `CAST(CASE WHEN instr(${AGE}, '-')>0 THEN substr(${AGE}, 1, instr(${AGE}, '-')-1) ELSE ${AGE} END AS INTEGER)`;
+  const AGE_MAX = `CAST(CASE WHEN instr(${AGE}, '-')>0 THEN substr(${AGE}, instr(${AGE}, '-')+1) ELSE ${AGE} END AS INTEGER)`;
+
+  // Пересечение интервалов: [AGE_MIN, AGE_MAX] ∩ [ageFrom, ageTo] ≠ ∅
+  if (typeof ageFrom === "number" && Number.isFinite(ageFrom) &&
+      typeof ageTo === "number" && Number.isFinite(ageTo)) {
+    where.push(`(${AGE_MAX} >= ? AND ${AGE_MIN} <= ?)`);
+    args.push(ageFrom, ageTo);
+  } else if (typeof ageFrom === "number" && Number.isFinite(ageFrom)) {
+    where.push(`${AGE_MAX} >= ?`);
     args.push(ageFrom);
-  }
-  if (typeof ageTo === "number" && Number.isFinite(ageTo)) {
-    where.push("(instr(age_range,'-')>0 AND CAST(substr(age_range,instr(age_range,'-')+1) AS INT) <= ?)");
+  } else if (typeof ageTo === "number" && Number.isFinite(ageTo)) {
+    where.push(`${AGE_MIN} <= ?`);
     args.push(ageTo);
   }
+  // ======================================================
 
   const qsql = `
     SELECT user_id, full_name, sex, age_range, look_type, body_type,

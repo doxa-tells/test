@@ -24,6 +24,7 @@ export default async function Page({ searchParams }: { searchParams: SP }) {
     sex: asStr(searchParams.sex),
     city: asStr(searchParams.city),
     look_type: asStr(searchParams.look),
+    body_type: asStr(searchParams.body),   // ← добавлено
     hair_color: asStr(searchParams.hair),
     eye_color: asStr(searchParams.eye),
     lang: asStr(searchParams.lang),

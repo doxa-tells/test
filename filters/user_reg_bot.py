@@ -31,6 +31,7 @@ from dotenv import load_dotenv
 from telethon import TelegramClient, events, Button
 from telethon.tl.custom.message import Message
 from telethon.errors import MessageIdInvalidError, MessageNotModifiedError
+from filters.webapp_api import build_apply_webapp_url
 import re
 import urllib.parse as up  # у вас уже есть, но убедитесь что импорт именно как up
 
@@ -66,6 +67,7 @@ API_ID    = _getenv("API_ID",   required=True, cast=int)
 API_HASH  = _getenv("API_HASH", required=True)
 BOT_TOKEN = _getenv("BOT_TOKEN", required=True)
 WEBAPP_URL = _getenv("WEBAPP_URL", required=True)
+APPLY_WEBAPP_URL = _getenv("APPLY_WEBAPP_URL", required=True)
 # [ADD] Необязательный секрет для подписи ссылки мини-аппы
 WEBAPP_SIGNING_SECRET = _getenv("WEBAPP_SIGNING_SECRET", required=False)
 
@@ -239,6 +241,15 @@ def get_user_matches(uid: int):
             r["message_ids"] = []
     return rows
 
+def delete_match_by_id(match_id: int, uid: int) -> bool:
+    con = sqlite3.connect(DB_PATH)
+    cur = con.cursor()
+    try:
+        cur.execute("DELETE FROM matches WHERE id=? AND user_id=?", (match_id, uid))
+        con.commit()
+        return (cur.rowcount or 0) > 0
+    finally:
+        con.close()
 # ---- согласие: хелперы ----------------------------------------------------
 
 def has_consent(uid: int) -> bool:
@@ -510,7 +521,28 @@ async def botapi_delete_message(chat_id: int, message_id: int) -> bool:
             # Остальные ошибки — логируем и возвращаем False
             print("BotAPI deleteMessage error:", data)
             return False
-
+async def botapi_copy_message(chat_id: int, from_chat_id: int, message_id: int,
+                              caption: str, reply_markup: dict) -> Optional[int]:
+    """
+    Копирует исходное сообщение в чат пользователя с новой подписью и inline-клавиатурой.
+    Возвращает message_id нового сообщения или None.
+    """
+    payload = {
+        "chat_id": chat_id,
+        "from_chat_id": from_chat_id,
+        "message_id": message_id,
+        "caption": caption,
+        "parse_mode": "Markdown",
+        "disable_web_page_preview": True,
+        "reply_markup": reply_markup,
+    }
+    async with aiohttp.ClientSession() as session:
+        async with session.post(f"{BOT_API_BASE}/copyMessage", json=payload) as resp:
+            data = await resp.json()
+            if data.get("ok") and data.get("result"):
+                return int(data["result"]["message_id"])
+            print("BotAPI copyMessage error:", data)
+            return None
 # --- STATE ------------------------------------------------------------------
 
 STATE: Dict[int, Dict[str, Any]] = {}
@@ -541,7 +573,7 @@ def is_url_or_skip(text: str) -> str:
     t = (text or "").strip()
     return "" if t.lower() in ("нет", "no", "none", "-") else t
 
-def format_summary(data: Dict[str, Any]) -> str:
+def format_summary(data: Dict[str, Any], *, show_hint: bool = True) -> str:
     langs = (", ".join(data["languages"]) if isinstance(data.get("languages"), list)
              else (data.get("languages") or "—"))
     lines = [
@@ -564,11 +596,13 @@ def format_summary(data: Dict[str, Any]) -> str:
         f"🧠 Навыки: {data.get('skills', '—')}",
         f"📞 Телефон: {data.get('phone','—')}",
         f"📸 Instagram: {data.get('instagram','—')}",
-        f" ",
-        f"🌟**Подсказка:**",
-        f"Подключи ИИ-кастинг агента и получай только подходящие для тебя кастинги из 30+ WA/TG групп с возможностью отправлять портфолио в один клик."
     ]
-
+    if show_hint:
+        lines += [
+            "",
+            "🌟**Подсказка:**",
+            "Подключи ИИ-кастинг агента и получай только подходящие для тебя кастинги из 30+ WA/TG групп с возможностью отправлять портфолио в один клик.",
+        ]
     return "\n".join(lines)
 
 def build_controls(can_back: bool):
@@ -598,14 +632,18 @@ async def render_text(uid: int, chat_id: int, text: str, buttons=None):
 
 async def render_menu(chat_id: int, uid: int):
     active = is_sub_active(uid)
-    tariff_label = "⚡ Подключить ИИ кастинг-агента" if not active else "🟢 ИИ кастинг-агент активен"
+    if active:
+        tariff_row = [Button.inline("🟢 ИИ кастинг-агент активен", b"noop")]
+    else:
+        tariff_row = [Button.inline("⚡ Подключить ИИ кастинг-агента", b"open_tariff")]
+
     await render_text(
         uid, chat_id, WELCOME,
         buttons=[
             [Button.inline("📝 Попасть в базу (5 мин)", b"start_form_or_profile")],
             [Button.inline("📇 Моя анкета", b"my_profile")],
             [Button.inline("📰 Смотреть кастинги", b"view_castings")],
-            [Button.inline(tariff_label, b"open_tariff")],
+            tariff_row,
         ],
     )
 
@@ -623,28 +661,33 @@ async def clear_sticky_notices(chat_id: int, uid: int, except_id: Optional[int] 
         pass
 
  # --- отклик: построение контакта и ссылки -----------------------------------
+CONTACT_RE_EMAIL = re.compile(r"([A-Za-z0-9_.+\-]+@[A-Za-z0-9\-]+\.[A-Za-z0-9.\-]+)")
 CONTACT_RE_TG = re.compile(r"@([A-Za-z0-9_]{5,})")
 CONTACT_RE_PHONE = re.compile(r"(\+?\d[\d\-\s\(\)]{7,}\d)")
 
 def _find_contact_in_text(text: str) -> dict:
     t = (text or "").strip()
-    # сначала @username
+
+    m = CONTACT_RE_EMAIL.search(t)
+    if m:
+        return {"type": "email", "email": m.group(1)}
+
     m = CONTACT_RE_TG.search(t)
     if m:
         return {"type": "tg", "username": m.group(1)}
-    # затем номер телефона
+
     m = CONTACT_RE_PHONE.search(t)
     if m:
         digits = re.sub(r"\D", "", m.group(1))
-        # нормализация 8XXXXXXXXXX -> 7XXXXXXXXXX
         if len(digits) == 11 and digits.startswith("8"):
             digits = "7" + digits[1:]
         return {"type": "wa", "phone": digits}
+
     return {}
 
 def _build_apply_text(u: dict, ad_text: str) -> str:
     ad = (ad_text or "").strip()
-    card = format_summary(u)
+    card = format_summary(u, show_hint=False)
     return (
         "Здравствуйте.\n"
         "Я по поводу вашего кастинга на Roletapp AI.\n\n"
@@ -652,48 +695,147 @@ def _build_apply_text(u: dict, ad_text: str) -> str:
         "Моя анкета:\n"
         f"{card}"
         )
-
-def _build_apply_url(uid: int, ad_text: str) -> Optional[str]:
+def build_apply_button_dict(uid: int, ad_text: str) -> dict:
+    """
+    Возвращает словарь кнопки для inline_keyboard (Bot API):
+    - при e-mail -> web_app
+    - при WA/TG -> url
+    - иначе      -> callback_data 'apply_unavailable'
+    """
+    contact = _find_contact_in_text(ad_text)
     u = get_user(uid)
     if not u:
-        return None
-    contact = _find_contact_in_text(ad_text)
-    if not contact:
+        return { "text": "✅ Откликнуться", "callback_data": "apply_unavailable" }
+
+    msg = _build_apply_text(u, ad_text)
+
+    # ✉️ e-mail -> открываем нашу мини-аппу /apply
+    if contact.get("type") == "email":
+        url = build_apply_webapp_url(
+            APPLY_WEBAPP_URL,
+            uid=uid,
+            to=contact["email"],
+            subject="Заявка на кастинг",
+            body_text=msg,
+            signing_secret=WEBAPP_SIGNING_SECRET,
+        )
+        return { "text": "✅ Откликнуться", "web_app": { "url": url } }
+
+    # 💬 WhatsApp
+    if contact.get("type") == "wa":
+        enc = up.quote(msg)
+        return { "text": "✅ Откликнуться", "url": f"https://wa.me/{contact['phone']}?text={enc}" }
+
+    # 🤝 Telegram username
+    if contact.get("type") == "tg":
+        enc = up.quote(msg)
+        user_link = f"https://t.me/{contact['username']}"
+        return { "text": "✅ Откликнуться", "url": f"https://t.me/share/url?url={up.quote(user_link)}&text={enc}" }
+
+    # Fallback — просто текст для поделиться
+    enc = up.quote(msg)
+    return { "text": "✅ Откликнуться", "url": f"https://t.me/share/url?text={enc}" }
+
+def _build_apply_url(uid: int, ad_text: str) -> Optional[str]:
+    """
+    Строим URL для «Откликнуться».
+    Приоритет: телефон (wa.me) > @username (t.me/share с ссылкой на контакт) > fallback (t.me/share только с текстом).
+    """
+    u = get_user(uid)
+    if not u:
         return None
 
     msg = _build_apply_text(u, ad_text)
     enc = up.quote(msg)
 
-    if contact["type"] == "wa":
+    contact = _find_contact_in_text(ad_text)
+    if contact.get("type") == "wa":
         # оф. формат wa.me — только цифры, без +
         return f"https://wa.me/{contact['phone']}?text={enc}"
 
-    if contact["type"] == "tg":
-        # В Telegram нельзя заранее подставить текст сразу в ЛС человеку.
-        # Делаем «поделиться» с текстом, а в самом тексте будет ссылка на контакт.
+    if contact.get("type") == "tg":
+        # «Поделиться» с предзаполненным текстом и ссылкой на контакт
         user_link = f"https://t.me/{contact['username']}"
         return f"https://t.me/share/url?url={up.quote(user_link)}&text={enc}"
 
-    return None
+    # Fallback: контакта нет — откроется «Поделиться» в Telegram с готовым текстом
+    return f"https://t.me/share/url?text={enc}"
+
+def build_casting_keyboard(uid: int, caption: str) -> dict:
+    apply_btn = build_apply_button_dict(uid, caption)
+    return {
+        "inline_keyboard": [
+            [ { "text":"◀️", "callback_data":"cast_prev" }, { "text":"▶️", "callback_data":"cast_next" } ],
+            [ { "text":"🙈 Скрыть", "callback_data":"cast_hide" }, apply_btn ],
+            [ { "text":"🏠 Главное меню", "callback_data":"home" } ],
+        ]
+    }
+
+def _build_source_link(source_chat: Optional[int], message_ids: list[int]) -> Optional[str]:
+    """
+    Пытаемся построить ссылку на оригинальный пост (для супергрупп/каналов).
+    Формат: https://t.me/c/<abs_chat_id_without_-100>/<message_id>
+    """
+    try:
+        if not source_chat or not message_ids:
+            return None
+        msg_id = int(message_ids[0])
+        cid = int(source_chat)
+        if str(cid).startswith("-100"):
+            return f"https://t.me/c/{str(cid)[4:]}/{msg_id}"
+        return None
+    except Exception:
+        return None
 
 async def _render_match_view(uid: int, chat_id: int, match: dict, pos: int, total: int):
     """
     Показывает оригинальный пост с нужным поведением:
-      • 1 фото + текст  -> одно сообщение (медиа+подпись+позиция+кнопки)
-      • только текст     -> одно сообщение (текст+позиция+кнопки)
-      • альбом/неск.фото -> альбом отдельным сообщением, позиция+кнопки — вторым
+      • 1 фото + текст  -> одно сообщение (копия Bot API c подписью+позиция+кнопки)
+      • только текст     -> одно сообщение (Bot API текст+позиция+кнопки)
+      • альбом/неск.фото -> альбом отдельным сообщением, позиция+кнопки — вторым (Bot API)
+
+    Важно: «Откликнуться» (в т.ч. web_app при e-mail) теперь всегда внутри одного сообщения.
     """
     # 0) очистим предыдущий показ
     st = STATE.setdefault(uid, {})
     old_ids = st.get("castings_msg_ids") or []
     if old_ids:
-        try: await client.delete_messages(chat_id, old_ids, revoke=True)
-        except Exception: pass
+        try:
+            await client.delete_messages(chat_id, old_ids, revoke=True)
+        except Exception:
+            pass
         st["castings_msg_ids"] = []
+
+    # если раньше для навигации или каста были Bot API-сообщения — удалим их
+    prev_api_mid = st.pop("castings_api_mid", None)
+    if prev_api_mid:
+        try:
+            await botapi_delete_message(chat_id, prev_api_mid)
+        except Exception:
+            pass
+
+    prev_nav_mid = st.pop("castings_nav_mid", None)
+    if prev_nav_mid:
+        try:
+            await botapi_delete_message(chat_id, prev_nav_mid)
+        except Exception:
+            pass
+
+    # старый Telethon-навигационный экран (если был)
     if st.get("castings_nav_id"):
-        try: await client.delete_messages(chat_id, st["castings_nav_id"], revoke=True)
-        except Exception: pass
+        try:
+            await client.delete_messages(chat_id, st["castings_nav_id"], revoke=True)
+        except Exception:
+            pass
         st["castings_nav_id"] = None
+
+    # сносим прежнюю webapp-кнопку (если когда-то отправлялась отдельным сообщением)
+    prev_webapp_mid = st.pop("castings_webapp_mid", None)
+    if prev_webapp_mid:
+        try:
+            await botapi_delete_message(chat_id, prev_webapp_mid)
+        except Exception:
+            pass
 
     # 1) достаём оригинальные сообщения
     source_chat = match.get("source_chat")
@@ -709,58 +851,54 @@ async def _render_match_view(uid: int, chat_id: int, match: dict, pos: int, tota
     # 2) текст подписи
     text_cache = match.get("text_cache") or ""
     caption = _extract_original_text(src_msgs, fallback=text_cache) or ""
-    # кнопки отклика/скипа
-    apply_url = _build_apply_url(uid, caption)
-    apply_btn = Button.url("✅ Откликнуться", apply_url) if apply_url else Button.inline("✅ Откликнуться",
-                                                                                        b"apply_unavailable")
-    skip_btn = Button.inline("⏭ Пропустить", b"cast_next")  # скип = перейти к следующему
+    full_caption = (caption + f"\n\nПозиция: {pos}/{total}").strip()
 
+    # 2a) Клавиатура (Bot API) с корректной «Откликнуться» (включая web_app при e-mail)
+    kb_json = build_casting_keyboard(uid, caption)
 
-    # 3) случай: РОВНО ОДНО медиа (не альбом) -> одно сообщение с кнопками
+    # 3) случай: РОВНО ОДНО медиа (не альбом) -> копируем сообщением Bot API с новой подписью и клавиатурой
     if len(src_msgs) == 1:
         msg0 = src_msgs[0]
         is_single_media = bool(getattr(msg0, "media", None)) and getattr(msg0, "grouped_id", None) is None
-        if is_single_media:
-            full_caption = (caption + f"\n\nПозиция: {pos}/{total}").strip()
+        if is_single_media and source_chat and message_ids:
             try:
-                sent = await client.send_file(
-                    chat_id,
-                    file=msg0,  # Telethon умеет ре-аплоадить Message как входной файл
-                    caption=full_caption,
-                    buttons=[
-                        [Button.inline("◀️", b"cast_prev"), Button.inline("▶️", b"cast_next")],
-                        [apply_btn, skip_btn],
-                        [Button.inline("🏠 Главное меню", b"home")],
-                    ],
-                    link_preview=False,
-                )
-                st["castings_msg_ids"] = [sent.id]
-                st["castings_nav_id"] = None
-                return  # ничего дополнительно не шлём
+                # Bot API: copyMessage
+                async with aiohttp.ClientSession() as session:
+                    payload = {
+                        "chat_id": chat_id,
+                        "from_chat_id": int(source_chat),
+                        "message_id": int(message_ids[0]),
+                        "caption": full_caption,
+                        "parse_mode": "Markdown",
+                        "disable_web_page_preview": True,
+                        "reply_markup": kb_json,
+                    }
+                    async with session.post(f"{BOT_API_BASE}/copyMessage", json=payload) as resp:
+                        data = await resp.json()
+                        if data.get("ok") and data.get("result"):
+                            st["castings_api_mid"] = int(data["result"]["message_id"])
+                            return
+                        else:
+                            print("BotAPI copyMessage error:", data)
             except Exception as e:
-                print(f"⚠️ Не удалось отправить единичное медиа с кнопками: {e}")
+                print(f"⚠️ Не удалось скопировать медиа через Bot API: {e}")
                 # упадём в общий фоллбэк ниже
 
     # 4) готовим файлы (если есть)
     files = await _download_media_files(src_msgs)
 
-    # 4a) ТОЛЬКО ТЕКСТ -> одно сообщение с кнопками
+    # 4a) ТОЛЬКО ТЕКСТ -> одно Bot API сообщение с кнопками
     if not files:
-        sent = await client.send_message(
+        mid = await botapi_send_message(
             chat_id,
-            ((caption + f"\n\nПозиция: {pos}/{total}").strip() if caption else f"Позиция: {pos}/{total}"),
-            buttons=[
-                [Button.inline("◀️", b"cast_prev"), Button.inline("▶️", b"cast_next")],
-                [apply_btn, skip_btn],
-                [Button.inline("🏠 Главное меню", b"home")],
-            ],
-            link_preview=False,
+            (full_caption if caption else f"Позиция: {pos}/{total}"),
+            kb_json,
         )
-        st["castings_msg_ids"] = [sent.id]
-        st["castings_nav_id"] = None
+        if isinstance(mid, int):
+            st["castings_api_mid"] = mid
         return
 
-    # 4b) АЛЬБОМ / несколько файлов -> контент отдельно, навигация отдельно
+    # 4b) АЛЬБОМ / несколько файлов -> контент отдельно (Telethon), управление отдельно (Bot API)
     sent_ids = []
     try:
         if len(files) == 1:
@@ -780,19 +918,10 @@ async def _render_match_view(uid: int, chat_id: int, match: dict, pos: int, tota
 
     st["castings_msg_ids"] = sent_ids
 
-    # 5) отдельное сообщение с позицией и кнопками (для альбомов)
-    nav = await client.send_message(
-        chat_id,
-        f"Позиция: {pos}/{total}",
-        buttons=[
-            [Button.inline("◀️", b"cast_prev"), Button.inline("▶️", b"cast_next")],
-            [apply_btn, skip_btn],
-            [Button.inline("⬅️ Назад", b"back")],
-            [Button.inline("🏠 Главное меню", b"home")],
-        ],
-        link_preview=False,
-    )
-    st["castings_nav_id"] = nav.id
+    # 5) отдельное Bot API-сообщение с позицией и кнопками (для альбомов)
+    nav_mid = await botapi_send_message(chat_id, f"Позиция: {pos}/{total}", kb_json)
+    if isinstance(nav_mid, int):
+        st["castings_nav_mid"] = nav_mid
 
 # --- WIZARD -----------------------------------------------------------------
 
@@ -1281,19 +1410,20 @@ async def open_tariff(ev: events.CallbackQuery.Event):
 @client.on(events.CallbackQuery(data=b"webapp_back"))
 async def webapp_back(ev):
     uid, chat_id = ev.sender_id, ev.chat_id
-    # сразу редактируем то же сообщение
-    await client.edit_message(
-        chat_id, ev.message_id,
-        WELCOME,
-        buttons=[
-            [Button.inline("📝 Попасть в базу (5 мин)", b"start_form_or_profile")],
-            [Button.inline("📇 Моя анкета", b"my_profile")],
-            [Button.inline("📰 Смотреть кастинги", b"view_castings")],
-            [Button.inline("⚡ Подключить ИИ кастинг-агента", b"open_tariff")],
-        ],
-        link_preview=False, parse_mode="markdown",
-    )
-    STATE.setdefault(uid, {})["screen_id"] = ev.message_id
+    # удаляем сообщение мини-аппы с кнопкой
+    try:
+        await ev.delete()
+    except Exception:
+        pass
+
+    # сбрасываем "текущий экран", чтобы меню перерисовалось корректно
+    STATE.setdefault(uid, {})["screen_id"] = None
+
+    # на всякий — удалим любые залипшие webapp-сообщения
+    await cleanup_webapp_leftovers(chat_id)
+
+    # рисуем главное меню с актуальной кнопкой (активен/подключить)
+    await render_menu(chat_id, uid)
 
 # /start -> главное меню (один экран)
 @client.on(events.NewMessage(pattern=r"^/start$"))
@@ -1353,8 +1483,8 @@ async def skip_field(ev: events.CallbackQuery.Event):
     chat_id = ev.chat_id
     st = STATE.setdefault(uid, {"screen_id": None, "album_msg_ids": []})
 
-    # подчистим уведомления
-    await clear_sticky_notices(chat_id, uid, except_id=getattr(ev, "message_id", None))
+    except_id = ev.message.id if getattr(ev, "message", None) else None
+    await clear_sticky_notices(chat_id, uid, except_id=except_id)
 
     if st.get("busy"):
         return
@@ -1365,32 +1495,42 @@ async def skip_field(ev: events.CallbackQuery.Event):
         i = st["step"]
         if i >= len(STEPS):
             return
-        step = STEPS[i]
-        key = step["key"]
-        typ = step.get("type")
 
-        raw = ev.data.decode("utf-8", errors="ignore")
-        _, payload_key = raw.split(":", 1)
+        step = STEPS[i]
+        key  = step["key"]
+        scope = st.get("scope")  # None | "form" | "photos"
+        editing = scope in ("form", "photos")
+
+        try:
+            raw = ev.data.decode("utf-8", errors="ignore")
+            _, payload_key = raw.split(":", 1)
+        except ValueError:
+            return
         if payload_key != key:
             return
 
-        if typ == "url-or-skip":
-            # просто очищаем поле и идём дальше
-            st["answers"][key] = ""
+        typ = step.get("type")
 
+        if typ == "url-or-skip":
+            # если редактируем и значение уже есть — оставляем как есть
+            cur = st["answers"].get(key, "")
+            if editing and (cur or str(cur).strip()):
+                pass  # не меняем
+            else:
+                st["answers"][key] = ""  # первичное заполнение: «нет»
         elif typ == "photo":
-            # пропуск фото разрешён только со 2-й по 4-ю
             slot = int(step.get("slot", 1))
-            if slot <= 1:
-                # первую фотографию пропускать нельзя
+            # Первое фото обязательно только в первичном мастере (в редактировании разрешим пролистывать)
+            if slot <= 1 and not editing:
                 await ev.answer("Первое фото обязательно 👇", alert=False)
                 return
-            # помечаем, что фото отсутствует
-            st["answers"][key] = ""  # photo{slot}_id
-            st["answers"][f"photo{slot}_tg"] = None
-
+            if editing:
+                pass  # «пропустить» = оставить текущую фотографию
+            else:
+                # первичное заполнение: просто пустим дальше без фото
+                st["answers"][key] = ""
+                st[f"photo{slot}_tg"] = None
         else:
-            # другие типы не поддерживают пропуск
             return
 
         st["step"] += 1
@@ -1789,7 +1929,6 @@ async def view_castings(ev: events.CallbackQuery.Event):
             # если нет — покажем заглушку
             txt = "Пока подходящих объявлений нет. Как только появятся — я уведомлю!"
             await render_text(uid, chat_id, txt, buttons=[
-                [Button.inline("⬅️ Назад", b"back")],
                 [Button.inline("🏠 Главное меню", b"home")]
             ])
             return
@@ -1826,7 +1965,6 @@ async def cast_next(ev: events.CallbackQuery.Event):
                 chat_id,
                 "Пока подходящих объявлений нет. Как только появятся — я уведомлю!",
                 buttons=[
-                    [Button.inline("⬅️ Назад", b"back")],
                     [Button.inline("🏠 Главное меню", b"home")],
                 ],
             )
@@ -1882,6 +2020,66 @@ async def cast_prev(ev: events.CallbackQuery.Event):
         # рендер текущего матча
         match = items[idx]
         await _render_match_view(uid, chat_id, match, pos=idx + 1, total=len(items))
+    finally:
+        st["busy"] = False
+
+@client.on(events.CallbackQuery(data=b"cast_hide"))
+async def cast_hide(ev: events.CallbackQuery.Event):
+    uid = ev.sender_id
+    chat_id = ev.chat_id
+    st = STATE.setdefault(uid, {"screen_id": None})
+
+    # удалить сообщение, откуда кликнули, и подчистить уведомления
+    try:
+        await ev.delete()
+    except Exception:
+        pass
+    await clear_sticky_notices(chat_id, uid, except_id=getattr(ev, "message_id", None))
+
+    if st.get("busy"):
+        return
+    st["busy"] = True
+    try:
+        items = st.get("cast_items") or []
+        if not items:
+            await render_text(
+                uid, chat_id,
+                "Пока подходящих объявлений нет. Как только появятся — я уведомлю!",
+                buttons=[[Button.inline("⬅️ Назад", b"back")],
+                         [Button.inline("🏠 Главное меню", b"home")]]
+            )
+            return
+
+        idx = st.get("cast_idx", 0)
+        idx = max(0, min(idx, len(items)-1))
+        current = items[idx]
+        match_id = int(current.get("id", 0) or 0)
+
+        # Удаляем матч из БД и локального списка
+        if match_id:
+            delete_match_by_id(match_id, uid)
+
+        items.pop(idx)
+
+        if not items:
+            st["cast_items"] = []
+            st["cast_idx"] = 0
+            await render_text(
+                uid, chat_id,
+                "Вы скрыли все актуальные объявления. Как только появятся новые — я уведомлю!",
+                buttons=[[Button.inline("⬅️ Назад", b"back")],
+                         [Button.inline("🏠 Главное меню", b"home")]]
+            )
+            return
+
+        # Сдвиг индекса, если скрыли последний элемент
+        if idx >= len(items):
+            idx = 0
+        st["cast_items"] = items
+        st["cast_idx"] = idx
+
+        # Перерисовываем следующий элемент
+        await _render_match_view(uid, chat_id, items[idx], pos=idx + 1, total=len(items))
     finally:
         st["busy"] = False
 
@@ -2169,6 +2367,9 @@ async def handle_answer(ev: events.NewMessage.Event):
     st["step"] += 1
     await advance_or_finish(uid, ev.chat_id)
 
+@client.on(events.CallbackQuery(data=b"noop"))
+async def noop(ev: events.CallbackQuery.Event):
+    await ev.answer("Подписка активна ✅", alert=False)
 # --- Профильный экран + альбом ---------------------------------------------
 
 # --- Профильный экран: только меню редактирования -------------------------
@@ -2184,6 +2385,7 @@ async def show_profile_screen(
     edit_mode: bool = False,
     reset_album: bool = False,
 ):
+    active = is_sub_active(uid)
     st = STATE.setdefault(uid, {"screen_id": None, "album_msg_ids": []})
 
     if reposition and st.get("screen_id"):
@@ -2243,13 +2445,20 @@ async def show_profile_screen(
             except Exception:
                 st["album_msg_ids"] = []
 
-    txt = "📇 **Твоя анкета:**\n\n" + format_summary(u)
+    txt = "📇 **Твоя анкета:**\n\n" + format_summary(u, show_hint=not active)
     buttons = [
         [Button.inline("✏️ Редактировать", b"edit_profile")],
         [Button.inline("📰 Смотреть кастинги", b"view_castings")],
-        [Button.inline("⚡ Подключить ИИ-кастинг агента", b"open_tariff")],
-        [Button.inline("🏠 Главное меню", b"home")],
     ]
+
+    if active:
+        # «неактивная» заглушка-кнопка, просто сообщает статус
+        buttons.append([Button.inline("🟢 ИИ кастинг-агент активен", b"noop")])
+    else:
+        buttons.append([Button.inline("⚡ Подключить ИИ кастинг-агента", b"open_tariff")])
+
+    buttons.append([Button.inline("🏠 Главное меню", b"home")])
+
     await render_text(uid, chat_id, txt, buttons=buttons)
 # --- RUN --------------------------------------------------------------------
 

@@ -1,4 +1,4 @@
-#!/opt/casting_mirror_bot/venv/bin/python3
+#!/Users/darhan/test/venv/bin/python
 # -*- coding: utf-8 -*-
 import re
 import sys

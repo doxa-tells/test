@@ -17,5 +17,6 @@ export type Actor = {
   showreel: string | null;
   portfolio: string | null;
   projects: string | null;
+  skills: string | null;
   updated_at: string | null;
 };

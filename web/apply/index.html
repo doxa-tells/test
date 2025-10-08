@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <title>Отклик на кастинг — Roletapp</title>
+  <link rel="stylesheet" href="./style.css" />
+  <!-- Telegram WebApp SDK (без него не будет тёмной темы и expand) -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <div class="logo">🎬</div>
+      <div class="title">
+        <h1>Отклик на кастинг</h1>
+        <p class="subtitle">Проверьте письмо и отправьте с вашего почтового клиента</p>
+      </div>
+    </header>
+
+    <main>
+      <div class="field">
+        <label for="to">Email получателя</label>
+        <input id="to" type="email" inputmode="email" placeholder="mail@example.com" />
+      </div>
+
+      <div class="field">
+        <label for="subject">Тема письма</label>
+        <input id="subject" type="text" />
+      </div>
+
+      <div class="field">
+        <label for="body">Сообщение</label>
+        <textarea id="body" rows="12"></textarea>
+        <div class="hint">Текст можно отредактировать перед отправкой.</div>
+      </div>
+
+      <div class="actions">
+        <button id="btn-open">📧 Открыть почтовый клиент</button>
+        <button id="btn-copy">📋 Скопировать текст</button>
+      </div>
+
+      <div id="warn" class="warn" hidden>
+        ⚠️ Длина письма большая. Если почтовый клиент не откроется, скопируйте текст и вставьте вручную.
+      </div>
+    </main>
+
+    <footer class="footer">
+      <button id="btn-close" class="ghost">Закрыть</button>
+    </footer>
+  </div>
+
+  <script src="./apply.js"></script>
+</body>
+</html>

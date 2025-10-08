@@ -4,7 +4,7 @@ import Database from "better-sqlite3";
 import fs from "node:fs";
 import path from "node:path";
 
-let _db: Database.Database | null = null;
+let _db: Database | null = null;
 
 function resolveDbPath(): string {
   const envPath = (process.env.DB_PATH || "").trim();
@@ -45,6 +45,7 @@ export type Actor = {
   showreel: string | null;
   portfolio: string | null;
   projects: string | null;
+  skills: string | null;       // ← добавлено в тип
   updated_at: string | null;
 };
 
@@ -120,12 +121,10 @@ export function listActors(filters: CatalogFilters = {}): Actor[] {
   }
 
   // ==== Корректная фильтрация по ИНТЕРВАЛУ age_range ====
-  // Нормализуем age_range: убираем пробелы и разные типы дефисов к '-'
   const AGE = "REPLACE(REPLACE(REPLACE(age_range,' ',''),'–','-'),'—','-')";
   const AGE_MIN = `CAST(CASE WHEN instr(${AGE}, '-')>0 THEN substr(${AGE}, 1, instr(${AGE}, '-')-1) ELSE ${AGE} END AS INTEGER)`;
   const AGE_MAX = `CAST(CASE WHEN instr(${AGE}, '-')>0 THEN substr(${AGE}, instr(${AGE}, '-')+1) ELSE ${AGE} END AS INTEGER)`;
 
-  // Пересечение интервалов: [AGE_MIN, AGE_MAX] ∩ [ageFrom, ageTo] ≠ ∅
   if (typeof ageFrom === "number" && Number.isFinite(ageFrom) &&
       typeof ageTo === "number" && Number.isFinite(ageTo)) {
     where.push(`(${AGE_MAX} >= ? AND ${AGE_MIN} <= ?)`);
@@ -143,6 +142,7 @@ export function listActors(filters: CatalogFilters = {}): Actor[] {
     SELECT user_id, full_name, sex, age_range, look_type, body_type,
            height_cm, weight_kg, hair_color, hair_type, eye_color,
            cities, languages, instagram, video_vizitka, showreel, portfolio, projects,
+           skills,                                  -- ← добавлено в SELECT
            updated_at
     FROM users
     WHERE ${where.join(" AND ")}
@@ -158,6 +158,7 @@ export function getActorById(id: number): Actor | undefined {
     SELECT user_id, full_name, sex, age_range, look_type, body_type,
            height_cm, weight_kg, hair_color, hair_type, eye_color,
            cities, languages, instagram, video_vizitka, showreel, portfolio, projects,
+           skills,                                  -- ← добавлено в SELECT
            updated_at
     FROM users WHERE user_id = ?`;
   return db().prepare(q).get(id) as Actor | undefined;

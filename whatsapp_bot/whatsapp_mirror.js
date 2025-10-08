@@ -20,14 +20,41 @@ function escapeHtml(text) {
     .replace(/>/g, '&gt;');
 }
 
+// Определяем путь к Chrome: сначала из ENV, иначе разумный дефолт под ОС
+function defaultChromePath() {
+  switch (process.platform) {
+    case 'linux': return '/usr/bin/google-chrome-stable';
+    case 'darwin': return '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+    case 'win32': return 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+    default: return null;
+  }
+}
+const PUP_PATH = process.env.PUPPETEER_EXECUTABLE_PATH || defaultChromePath();
+
 console.log("🟡 Инициализация WhatsApp клиента...");
+console.log("🧭 Puppeteer executablePath =", PUP_PATH || '(не задан — проверь, что Chrome установлен)');
 
 const client = new Client({
-  authStrategy: new LocalAuth(),
+  // Берём существующую сессию из .wwebjs_auth/session-mirror-bot
+  authStrategy: new LocalAuth({
+    dataPath: path.join(__dirname, '.wwebjs_auth'),
+    clientId: 'mirror-bot'
+  }),
+  // помогает, если web-версия WhatsApp изменилась
+  webVersionCache: { type: 'remote' },
   puppeteer: {
-    headless: true,
-    executablePath: '/Applications/Chromium.app/Contents/MacOS/Chromium',
-    args: ['--no-sandbox', '--disable-setuid-sandbox']
+    headless: 'new',
+    // Не указываем userDataDir — с LocalAuth это несовместимо
+    ...(PUP_PATH ? { executablePath: PUP_PATH } : {}),
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+      '--no-first-run',
+      '--no-default-browser-check',
+      '--disable-extensions'
+    ]
   }
 });
 
@@ -81,7 +108,7 @@ client.on('message', async (message) => {
     if (message.hasMedia) {
       console.log("📷 Медиа обнаружено, скачиваем...");
       const media = await message.downloadMedia();
-      if (media && media.mimetype.startsWith("image/")) {
+      if (media && media.mimetype && media.mimetype.startsWith("image/")) {
         const buffer = Buffer.from(media.data, "base64");
         const fileName = `temp_${Date.now()}.jpg`;
         const filePath = path.join(__dirname, fileName);
@@ -127,9 +154,9 @@ client.on('message', async (message) => {
     // 🖼️ Фототриггеры
     const hay = `${text} ${ocrText}`.toLowerCase();
     const triggers = [
-      'как на фото', 'на фото', 'как на картинке', 'на картинке', 'как на изображении',
-      'см фото', 'см. фото', 'смотри фото', 'см картинку', 'см. картинку', 'смотри картинку',
-      'like the photo', 'as in the photo', 'see photo'
+      'как на фото','на фото','как на картинке','на картинке','как на изображении',
+      'см фото','см. фото','смотри фото','см картинку','см. картинку','смотри картинку',
+      'like the photo','as in the photo','see photo'
     ];
     const shouldSendPhoto = !!imagePath && triggers.some(t => hay.includes(t));
 
@@ -140,7 +167,9 @@ client.on('message', async (message) => {
       if (shouldSendPhoto && fs.existsSync(imagePath)) {
         const form = new FormData();
         form.append('chat_id', process.env.DESTINATION_CHAT_ID);
-        form.append('message_thread_id', parseInt(process.env.DESTINATION_THREAD_ID));
+        if (process.env.DESTINATION_THREAD_ID) {
+          form.append('message_thread_id', parseInt(process.env.DESTINATION_THREAD_ID, 10));
+        }
         form.append('caption', finalMessage);
         form.append('parse_mode', 'HTML');
         form.append('photo', fs.createReadStream(imagePath));
@@ -148,20 +177,23 @@ client.on('message', async (message) => {
         const tgResponse = await axios.post(
           `https://api.telegram.org/bot${process.env.BOT_TOKEN}/sendPhoto`,
           form,
-          { headers: form.getHeaders() }
+          { headers: form.getHeaders(), timeout: 15000 }
         );
         console.log("📬 Фото+шаблон отправлены в Telegram:", tgResponse.status);
       } else {
         const payload = {
           chat_id: process.env.DESTINATION_CHAT_ID,
-          message_thread_id: parseInt(process.env.DESTINATION_THREAD_ID),
           text: finalMessage,
           parse_mode: 'HTML'
         };
+        if (process.env.DESTINATION_THREAD_ID) {
+          payload.message_thread_id = parseInt(process.env.DESTINATION_THREAD_ID, 10);
+        }
 
         const tgResponse = await axios.post(
           `https://api.telegram.org/bot${process.env.BOT_TOKEN}/sendMessage`,
-          payload
+          payload,
+          { timeout: 15000 }
         );
         console.log("📬 Текст отправлен в Telegram:", tgResponse.status);
       }
@@ -180,4 +212,4 @@ client.on('message', async (message) => {
   }
 });
 
-client.initialize() ;
+client.initialize();

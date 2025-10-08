@@ -74,6 +74,7 @@ export default async function ActorPage({ params }: { params: { id: string } }) 
           <Row k="Шоурил" v={asLink(a.showreel)} />
           <Row k="Портфолио" v={asLink(a.portfolio)} />
           <Row k="Проекты" v={a.projects} />
+          <Row k="Навыки" v={a.skills} />
         </tbody>
       </table>
     </>

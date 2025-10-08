@@ -17,7 +17,7 @@ function guessFile(baseDir: string, userId: string, n: string) {
 }
 
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: { userId: string; n: string } }
 ) {
   // ВАЖНО: из каталога `web/catalog` до data/user_media — на ДВА уровня вверх
@@ -43,16 +43,34 @@ export async function GET(
     ext === "webp" ? "image/webp" :
     ext === "gif"  ? "image/gif"  : "image/jpeg";
 
+  // Генерируем ETag из размера и mtime (миллисек)
+  const etag = `"${stat.size}-${Math.floor(stat.mtimeMs)}"`;
+  const ifNoneMatch = req.headers.get("if-none-match");
+
+  if (ifNoneMatch && ifNoneMatch === etag) {
+    // 304 — файлы не отдаем, только заголовки
+    return new NextResponse(null, {
+      status: 304,
+      headers: {
+        "ETag": etag,
+        "Last-Modified": stat.mtime.toUTCString(),
+        "Cache-Control": "public, max-age=0, must-revalidate",
+        "X-Sent-File": path.basename(file),
+      },
+    });
+  }
+
   const buf = await fs.promises.readFile(file);
 
-  const res = new NextResponse(buf, {
+  return new NextResponse(buf, {
     status: 200,
     headers: {
       "Content-Type": type,
       "Content-Length": String(stat.size),
-      "Cache-Control": "public, max-age=3600, stale-while-revalidate=86400",
+      "ETag": etag,
+      "Last-Modified": stat.mtime.toUTCString(),
+      "Cache-Control": "public, max-age=0, must-revalidate",
       "X-Sent-File": path.basename(file),
     },
   });
-  return res;
 }

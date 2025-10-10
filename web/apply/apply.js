@@ -1,94 +1,71 @@
 // Мини-аппа "Откликнуться по e-mail"
 (function () {
   const tg = window.Telegram && window.Telegram.WebApp;
-
-  // 1) Инициализация WebApp UI
-  if (tg) {
-    tg.ready();
-    try { tg.expand(); } catch {}
-    // Тема
-    if (tg.colorScheme === 'light') document.body.classList.add('tg-theme-light');
-  }
-
-  // 2) Утилиты
+  if (tg) { try { tg.ready(); tg.expand(); } catch {} if (tg.colorScheme==='light') document.body.classList.add('tg-theme-light'); }
   const $ = (id) => document.getElementById(id);
 
-  function b64urlDecode(str) {
-    if (!str) return '';
-    // заменить URL-символы обратно
-    const pad = str.length % 4 === 2 ? '==' : str.length % 4 === 3 ? '=' : str.length % 4 === 1 ? '===' : '';
-    const s = str.replace(/-/g, '+').replace(/_/g, '/') + pad;
-    try {
-      return decodeURIComponent(
-        Array.prototype.map.call(atob(s), c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')
-      );
-    } catch {
-      return '';
-    }
+  function b64urlDecode(str){ if(!str) return ''; const pad=str.length%4===2?'==':str.length%4===3?'=':str.length%4===1?'===':''; const s=str.replace(/-/g,'+').replace(/_/g,'/')+pad; try{ return decodeURIComponent(Array.prototype.map.call(atob(s),c=>'%' + ('00'+c.charCodeAt(0).toString(16)).slice(-2)).join('')); }catch{ return ''; } }
+  function buildMailto(to,subject,body){ const p=[]; if(subject) p.push('subject='+encodeURIComponent(subject)); if(body) p.push('body='+encodeURIComponent(body)); return `mailto:${to}${p.length?'?'+p.join('&'):''}`; }
+  const emailRx=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const isIOS = (tg && tg.platform === 'ios') || /iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+  // Заполняем из query
+  const usp=new URLSearchParams(location.search);
+  $('to').value=(usp.get('to')||'').trim();
+  $('subject').value=usp.get('subject')||'Заявка на кастинг';
+  $('body').value=b64urlDecode(usp.get('body')||'');
+
+  const btnOpen = $('btn-open');
+  const warn = $('warn');
+
+  function refreshHref(){
+    const href = buildMailto(($('to').value||'').trim(), $('subject').value, $('body').value);
+    btnOpen.setAttribute('href', href);
+    warn.hidden = href.length <= 1900;
   }
+  ['to','subject','body'].forEach(id => $(id).addEventListener('input', refreshHref));
+  refreshHref();
 
-  function buildMailto(to, subject, body) {
-    const params = [];
-    if (subject) params.push('subject=' + encodeURIComponent(subject));
-    if (body) params.push('body=' + encodeURIComponent(body));
-    const qs = params.join('&');
-    // В адресе e-mail не кодируем @ и + (клиенты понимают)
-    return `mailto:${to}${qs ? '?' + qs : ''}`;
-  }
+  btnOpen.addEventListener('click', async (e) => {
+    e.preventDefault();
+    const to = ($('to').value || '').trim();
+    if (!emailRx.test(to)) { alert('Проверьте e-mail получателя.'); return; }
 
-  function validateEmail(v) {
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((v || '').trim());
-  }
+    const subject = $('subject').value;
+    const body = $('body').value;
+    const mailto = buildMailto(to, subject, body);
 
-  // 3) Проставляем данные из query-параметров
-  const usp = new URLSearchParams(location.search);
-  const to = (usp.get('to') || '').trim();
-  const subject = usp.get('subject') || 'Заявка на кастинг';
-  const body = b64urlDecode(usp.get('body') || '');
-
-  $('to').value = to;
-  $('subject').value = subject;
-  $('body').value = body;
-
-  // 4) Кнопки
-  $('btn-open').addEventListener('click', () => {
-    const toV = $('to').value.trim();
-    if (!validateEmail(toV)) {
-      alert('Проверьте e-mail получателя.');
+    // iOS: открываем внешнюю страничку-бридж -> Safari -> Почта
+    if (isIOS) {
+      const bridge = `${location.origin}/apply/bridge.html?to=${encodeURIComponent(to)}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+      try { tg?.openLink?.(bridge); } catch { location.href = bridge; }
       return;
     }
-    const mailto = buildMailto(toV, $('subject').value, $('body').value);
-    // Предостережение по длине URL (mailto ограничен вебвью ~2К)
-    const warn = $('warn');
-    if (mailto.length > 1900) warn.hidden = false; else warn.hidden = true;
 
-    // Пытаемся открыть почтовый клиент
+    // Остальные платформы: даём шанс обычной ссылке и дубль через location.href
     try {
-      // anchor-клик более надёжный в WebView
       const a = document.createElement('a');
-      a.href = mailto;
-      a.style.display = 'none';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-    } catch {
-      // Фолбэк
-      location.href = mailto;
-    }
+      a.href = mailto; a.style.display='none';
+      document.body.appendChild(a); a.click(); a.remove();
+    } catch {}
+    setTimeout(() => {
+      if (document.visibilityState === 'visible') {
+        try { location.href = mailto; } catch {}
+      }
+    }, 300);
+
+    // Финальный фоллбек: системный шаринг (адрес не добавляем в текст)
+    setTimeout(async () => {
+      if (document.visibilityState === 'visible' && navigator.share) {
+        try { await navigator.share({ title: subject || 'Заявка на кастинг', text: body }); } catch {}
+      }
+    }, 700);
   });
 
   $('btn-copy').addEventListener('click', async () => {
-    try {
-      await navigator.clipboard.writeText($('body').value);
-      if (tg) tg.HapticFeedback && tg.HapticFeedback.notificationOccurred('success');
-      alert('Текст скопирован. Если почтовый клиент не открылся — вставьте вручную.');
-    } catch {
-      alert('Не удалось скопировать. Выделите текст вручную и скопируйте.');
-    }
+    try { await navigator.clipboard.writeText($('body').value); tg?.HapticFeedback?.notificationOccurred('success'); alert('Текст скопирован. Если почтовый клиент не открылся — вставьте вручную.'); }
+    catch { alert('Не удалось скопировать. Выделите текст и скопируйте.'); }
   });
 
-  $('btn-close').addEventListener('click', () => {
-    if (tg && tg.close) tg.close();
-    else window.history.back();
-  });
+  $('btn-close').addEventListener('click', () => { if (tg?.close) tg.close(); else history.back(); });
 })();

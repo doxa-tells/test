@@ -1,16 +1,18 @@
 <!doctype html>
 <html lang="ru">
 <head>
+  <link rel="stylesheet" href="styles.css?v=20251010-10">
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
   <title>Отклик на кастинг — Roletapp</title>
-  <link rel="stylesheet" href="./style.css" />
+  <link rel="stylesheet" href="styles.css?v=20251010-10" />
   <!-- Telegram WebApp SDK (без него не будет тёмной темы и expand) -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
   <div class="container">
     <header class="header">
+  <link rel="stylesheet" href="styles.css?v=20251010-10">
       <div class="logo">🎬</div>
       <div class="title">
         <h1>Отклик на кастинг</h1>
@@ -36,7 +38,7 @@
       </div>
 
       <div class="actions">
-        <button id="btn-open">📧 Открыть почтовый клиент</button>
+        <a id="btn-open" class="btn" href="#" rel="noopener">📧 Открыть почтовый клиент</a>
         <button id="btn-copy">📋 Скопировать текст</button>
       </div>
 
@@ -50,6 +52,6 @@
     </footer>
   </div>
 
-  <script src="./apply.js"></script>
+  <script src="./apply.js?v=20251010-12"></script>
 </body>
 </html>

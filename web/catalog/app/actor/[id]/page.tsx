@@ -2,7 +2,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
-import { getActorById, type Actor, photoUrl } from "../../../lib/db";
+import { getActorById, type Actor } from "../../../lib/db";
+import { photoUrl } from "../../../lib/media";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +33,7 @@ export default async function ActorPage({ params }: { params: { id: string } }) 
   const id = Number(params.id);
   if (!Number.isFinite(id)) return notFound();
 
-  const a: Actor | undefined = getActorById(id);
+  const a: Actor | undefined = await getActorById(id);
   if (!a) return notFound();
 
   return (

@@ -163,3 +163,4 @@ export async function getActorById(id: number): Promise<Actor | undefined> {
 export function photoUrl(userId: number, n: 1 | 2 | 3 | 4) {
   return `/media/${userId}/photo/${n}`;
 }
+

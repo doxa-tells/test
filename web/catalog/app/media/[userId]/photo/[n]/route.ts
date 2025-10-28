@@ -7,11 +7,19 @@ export const dynamic = "force-dynamic";
 function guessFile(baseDir: string, userId: string, n: string) {
   // поддерживаем и нижний, и верхний регистр расширений
   const tryExt = ["jpg","jpeg","png","webp","gif","JPG","JPEG","PNG","WEBP","GIF"];
+  const namePatterns = [
+    (num: string, ext: string) => path.join(baseDir, userId, `photo${num}.${ext}`),
+    (num: string, ext: string) => path.join(baseDir, userId, `${num}.${ext}`),
+    (num: string, ext: string) => path.join(baseDir, userId, "photo", `${num}.${ext}`),
+    (num: string, ext: string) => path.join(baseDir, userId, `photo_${num}.${ext}`),
+  ];
   for (const ext of tryExt) {
-    const p = path.join(baseDir, userId, `photo${n}.${ext}`);
-    try {
-      if (fs.existsSync(p)) return p;
-    } catch {}
+    for (const build of namePatterns) {
+      const p = build(n, ext);
+      try {
+        if (fs.existsSync(p)) return p;
+      } catch {}
+    }
   }
   return null;
 }
@@ -28,7 +36,18 @@ export async function GET(
   const file = guessFile(root, params.userId, params.n);
   if (!file) {
     console.warn(`[media] not found: ${params.userId}/photo${params.n} at ${root}`);
-    return new NextResponse(null, { status: 404 });
+    const transparentPngBase64 =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHhwJ/jl4wWwAAAABJRU5ErkJggg==";
+    const buf = Buffer.from(transparentPngBase64, "base64");
+    return new NextResponse(buf, {
+      status: 200,
+      headers: {
+        "Content-Type": "image/png",
+        "Content-Length": String(buf.length),
+        "Cache-Control": "public, max-age=0, must-revalidate",
+        "X-Placeholder": "1",
+      },
+    });
   }
 
   const stat = await fs.promises.stat(file);

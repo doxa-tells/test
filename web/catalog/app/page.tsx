@@ -19,7 +19,7 @@ function asStr(v?: string | string[]) {
 }
 
 export default async function Page({ searchParams }: { searchParams: SP }) {
-  const actors: Actor[] = listActors({
+  const actors: Actor[] = await listActors({
     q: asStr(searchParams.q),
     sex: asStr(searchParams.sex),
     city: asStr(searchParams.city),

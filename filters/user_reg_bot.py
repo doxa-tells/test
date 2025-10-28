@@ -1,29 +1,23 @@
 # filters/user_reg_bot.py
 # -*- coding: utf-8 -*-
-"""
-Анкетирование в одном сообщении (один экран):
-- /start -> меню с двумя кнопками:
-    • 📝 Попасть в базу (5 мин)
-    • 📇 Моя анкета
-- Умный роутинг:
-    • Если профиля нет -> "Попасть в базу" запускает мастер
-    • Если профиль есть -> "Попасть в базу" открывает "Мою анкету"
-    • "Моя анкета" без профиля -> перенаправление в мастер
-- Навигация в мастере: «Назад» / «Отмена», редактируется одно сообщение
-- Фото сохраняются на диск: data/user_media/<user_id>/photo{1..4}.jpg
-- Профили хранятся в SQLite: data/actors.db
-- В "Моя анкета": сначала отправляем альбом из 4 фото, затем показываем анкету в экране.
-  Альбом остаётся в истории и повторно не пересылается.
-"""
 
 import os
-import sqlite3
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import psycopg2
+from psycopg2.extras import RealDictCursor
 import json
 import base64
 import aiohttp  # для HTTP-вызовов Bot API
 import hmac, hashlib, time
+import asyncio
+import asyncpg
+try:
+    import redis.asyncio as redis
+except Exception:  # если redis не установлен или недоступен
+    redis = None
 from telethon import types
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Any, Optional
 from utils import fetch_and_clear_notices
@@ -34,6 +28,7 @@ from telethon.errors import MessageIdInvalidError, MessageNotModifiedError
 from filters.webapp_api import build_apply_webapp_url
 import re
 import urllib.parse as up  # у вас уже есть, но убедитесь что импорт именно как up
+  # Добавляет /home/pc/Desktop/test/
 
 
 # --- ENV --------------------------------------------------------------------
@@ -68,16 +63,55 @@ API_HASH  = _getenv("API_HASH", required=True)
 BOT_TOKEN = _getenv("BOT_TOKEN", required=True)
 WEBAPP_URL = _getenv("WEBAPP_URL", required=True)
 APPLY_WEBAPP_URL = _getenv("APPLY_WEBAPP_URL", required=True)
-# [ADD] Необязательный секрет для подписи ссылки мини-аппы
 WEBAPP_SIGNING_SECRET = _getenv("WEBAPP_SIGNING_SECRET", required=False)
+TTP_WEBHOOK_BASE = os.getenv("TTP_WEBHOOK_BASE", "http://127.0.0.1:8000").rstrip("/")
+
+# --- asyncpg pool & redis client --------------------------------------------
+PG_DB = os.getenv("PG_DB")
+PG_USER = os.getenv("PG_USER")
+PG_PASSWORD = os.getenv("PG_PASSWORD")
+PG_HOST = os.getenv("PG_HOST")
+PG_PORT = os.getenv("PG_PORT")
+
+_pg_pool: asyncpg.Pool | None = None
+
+async def _ensure_pg_pool() -> asyncpg.Pool:
+    global _pg_pool
+    if _pg_pool is None:
+        _pg_pool = await asyncpg.create_pool(
+            user=PG_USER,
+            password=PG_PASSWORD,
+            database=PG_DB,
+            host=PG_HOST,
+            port=int(PG_PORT) if (PG_PORT and PG_PORT.isdigit()) else PG_PORT,
+            min_size=1,
+            max_size=10,
+        )
+    return _pg_pool
+
+REDIS_URL = os.getenv("REDIS_URL")
+_redis: Optional[Any] = None
+if redis and REDIS_URL:
+    try:
+        _redis = redis.from_url(REDIS_URL)
+    except Exception:
+        _redis = None
 
 # --- STORAGE ----------------------------------------------------------------
 
 DATA_DIR   = Path(__file__).resolve().parents[1] / "data"
-DB_PATH    = DATA_DIR / "actors.db"
 MEDIA_ROOT = DATA_DIR / "user_media"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 MEDIA_ROOT.mkdir(parents=True, exist_ok=True)
+
+def _db_connect():
+    return psycopg2.connect(
+        dbname=os.getenv("PG_DB"),
+        user=os.getenv("PG_USER"),
+        password=os.getenv("PG_PASSWORD"),
+        host=os.getenv("PG_HOST"),
+        port=os.getenv("PG_PORT")
+    )
 
 def media_path(user_id: int, slot: int) -> Path:
     user_dir = MEDIA_ROOT / str(user_id)
@@ -85,254 +119,460 @@ def media_path(user_id: int, slot: int) -> Path:
     return user_dir / f"photo{slot}.jpg"
 
 def init_db():
-    con = sqlite3.connect(DB_PATH)
-    cur = con.cursor()
-
-    # --- анкеты пользователей ---
-    cur.execute(
-        """
-        CREATE TABLE IF NOT EXISTS users (
-            user_id INTEGER PRIMARY KEY,
-            full_name TEXT,
-            cities TEXT,
-            sex TEXT,
-            age_range TEXT,
-            look_type TEXT,
-            body_type TEXT,
-            height_cm INTEGER,
-            weight_kg INTEGER,
-            hair_color TEXT,
-            hair_type TEXT,
-            eye_color TEXT,
-            languages TEXT,
-            video_vizitka TEXT,
-            showreel TEXT,
-            portfolio TEXT,
-            projects TEXT,
-            phone TEXT,
-            skills TEXT,
-            instagram TEXT,
-            photo1_id TEXT,
-            photo2_id TEXT,
-            photo3_id TEXT,
-            photo4_id TEXT,
-            photo1_tg TEXT,
-            photo2_tg TEXT,
-            photo3_tg TEXT,
-            photo4_tg TEXT,
-            created_at TEXT,
-            updated_at TEXT
+    con = _db_connect()
+    with con.cursor() as cur:
+        # --- анкеты пользователей ---
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+                user_id BIGINT PRIMARY KEY,
+                full_name TEXT,
+                cities TEXT,
+                sex TEXT,
+                age_range TEXT,
+                look_type TEXT,
+                body_type TEXT,
+                height_cm INTEGER,
+                weight_kg INTEGER,
+                hair_color TEXT,
+                hair_type TEXT,
+                eye_color TEXT,
+                languages TEXT,
+                video_vizitka TEXT,
+                showreel TEXT,
+                portfolio TEXT,
+                projects TEXT,
+                phone TEXT,
+                skills TEXT,
+                instagram TEXT,
+                photo1_id TEXT,
+                photo2_id TEXT,
+                photo3_id TEXT,
+                photo4_id TEXT,
+                photo1_tg JSONB,
+                photo2_tg JSONB,
+                photo3_tg JSONB,
+                photo4_tg JSONB,
+                created_at TIMESTAMPTZ,
+                updated_at TIMESTAMPTZ
+            )
+            """
         )
-        """
-    )
 
-    # --- таблица подходящих кастингов (matches) ---
-    cur.execute(
-        """
-        CREATE TABLE IF NOT EXISTS matches (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            source_chat INTEGER,
-            thread_id INTEGER,
-            message_ids TEXT,      -- JSON: [int, ...] для альбомов/постов
-            text_cache TEXT,       -- текст кастинга на всякий
-            created_at TEXT NOT NULL
+        # --- таблица подходящих кастингов (matches) ---
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS matches (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                source_chat BIGINT,
+                thread_id INTEGER,
+                message_ids JSONB,
+                text_cache TEXT,
+                created_at TIMESTAMPTZ NOT NULL
+            )
+            """
         )
-        """
-    )
 
-    # --- согласие с офертой/политикой (персистентный флаг) ---
-    cur.execute(
-        """
-        CREATE TABLE IF NOT EXISTS consents (
-            user_id INTEGER PRIMARY KEY,
-            accepted_at TEXT NOT NULL
+        # --- согласие с офертой/политикой (персистентный флаг) ---
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS consents (
+                user_id BIGINT PRIMARY KEY,
+                accepted_at TIMESTAMPTZ NOT NULL
+            )
+            """
         )
-        """
-    )
 
-    # --- статус подписки (active/inactive) ---
-    cur.execute(
-        """
-        CREATE TABLE IF NOT EXISTS subs (
-            user_id   INTEGER PRIMARY KEY,
-            status    TEXT NOT NULL CHECK(status IN ('active','inactive')),
-            updated_at TEXT NOT NULL
+        # --- статус подписки (active/inactive) ---
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS subs (
+                user_id   BIGINT PRIMARY KEY,
+                status    TEXT NOT NULL CHECK(status IN ('active','inactive')),
+                updated_at TIMESTAMPTZ NOT NULL
+            )
+            """
         )
-        """
-    )
 
-    # индексы
-    try:
+        # индексы
         cur.execute("CREATE INDEX IF NOT EXISTS idx_matches_user_created ON matches(user_id, created_at DESC)")
-    except Exception:
-        pass
-
-    # --- миграции для старой базы ---
-    # добавляем TG-ссылки для фото
-    for col in ("photo1_tg", "photo2_tg", "photo3_tg", "photo4_tg"):
-        try:
-            cur.execute(f"ALTER TABLE users ADD COLUMN {col} TEXT")
-        except Exception:
-            pass
-
-    # добавляем skills
-    try:
-        cur.execute("ALTER TABLE users ADD COLUMN skills TEXT")
-    except Exception:
-        pass
-
-    # добавляем hair_color
-    try:
-        cur.execute("ALTER TABLE users ADD COLUMN hair_color TEXT")
-    except Exception:
-        pass
-
-    # добавляем hair_type
-    try:
-        cur.execute("ALTER TABLE users ADD COLUMN hair_type TEXT")
-    except Exception:
-        pass
-
-    # добавляем eye_color
-    try:
-        cur.execute("ALTER TABLE users ADD COLUMN eye_color TEXT")
-    except Exception:
-        pass
 
     con.commit()
     con.close()
 
+async def a_upsert_user(user_id: int, data: Dict[str, Any]):
+    now = datetime.now(timezone.utc)
+
+    def _to_int(v):
+        try:
+            return int(str(v).strip())
+        except (ValueError, TypeError):
+            return None
+
+    payload = {
+        "full_name":     data.get("full_name"),
+        "cities":        ", ".join(data["cities"]) if isinstance(data.get("cities"), list) else data.get("cities"),
+        "sex":           data.get("sex"),
+        "age_range":     data.get("age_range"),
+        "look_type":     data.get("look_type"),
+        "body_type":     data.get("body_type"),
+        "height_cm":     _to_int(data.get("height_cm")),
+        "weight_kg":     _to_int(data.get("weight_kg")),
+        "hair_color":    data.get("hair_color"),
+        "hair_type":     data.get("hair_type"),
+        "eye_color":     data.get("eye_color"),
+        "languages":     ", ".join(data["languages"]) if isinstance(data.get("languages"), list) else data.get("languages"),
+        "video_vizitka": data.get("video_vizitka"),
+        "showreel":      data.get("showreel"),
+        "portfolio":     data.get("portfolio"),
+        "projects":      data.get("projects"),
+        "phone":         data.get("phone"),
+        "instagram":     data.get("instagram"),
+        "skills":        data.get("skills"),
+        "photo1_id":     data.get("photo1_id"),
+        "photo2_id":     data.get("photo2_id"),
+        "photo3_id":     data.get("photo3_id"),
+        "photo4_id":     data.get("photo4_id"),
+        "photo1_tg":     json.dumps(data.get("photo1_tg")) if isinstance(data.get("photo1_tg"), dict) else None,
+        "photo2_tg":     json.dumps(data.get("photo2_tg")) if isinstance(data.get("photo2_tg"), dict) else None,
+        "photo3_tg":     json.dumps(data.get("photo3_tg")) if isinstance(data.get("photo3_tg"), dict) else None,
+        "photo4_tg":     json.dumps(data.get("photo4_tg")) if isinstance(data.get("photo4_tg"), dict) else None,
+    }
+    fields = ", ".join(payload.keys())
+    values = list(payload.values())
+    placeholders = ", ".join(f"${i}" for i in range(2, 2+len(values)))
+    ca_idx = 2+len(values)
+    ua_idx = ca_idx+1
+    set_updates = ", ".join(f"{k} = EXCLUDED.{k}" for k in payload.keys())
+
+    pool = await _ensure_pg_pool()
+    async with pool.acquire() as con:
+        await con.execute(
+            f"""
+            INSERT INTO users (user_id, {fields}, created_at, updated_at)
+            VALUES ($1, {placeholders}, ${ca_idx}, ${ua_idx})
+            ON CONFLICT(user_id) DO UPDATE SET
+                {set_updates},
+                updated_at = EXCLUDED.updated_at
+            """,
+            int(user_id), *values, now, now
+        )
+
+async def a_store_consent(uid: int):
+    pool = await _ensure_pg_pool()
+    async with pool.acquire() as con:
+        await con.execute(
+            "INSERT INTO consents(user_id, accepted_at) VALUES($1, $2) ON CONFLICT (user_id) DO NOTHING",
+            int(uid), datetime.now(timezone.utc)
+        )
+
+async def a_init_db():
+    pool = await _ensure_pg_pool()
+    async with pool.acquire() as con:
+        async with con.transaction():
+            await con.execute(
+                """
+                CREATE TABLE IF NOT EXISTS users (
+                    user_id BIGINT PRIMARY KEY,
+                    full_name TEXT,
+                    cities TEXT,
+                    sex TEXT,
+                    age_range TEXT,
+                    look_type TEXT,
+                    body_type TEXT,
+                    height_cm INTEGER,
+                    weight_kg INTEGER,
+                    hair_color TEXT,
+                    hair_type TEXT,
+                    eye_color TEXT,
+                    languages TEXT,
+                    video_vizitka TEXT,
+                    showreel TEXT,
+                    portfolio TEXT,
+                    projects TEXT,
+                    phone TEXT,
+                    skills TEXT,
+                    instagram TEXT,
+                    photo1_id TEXT,
+                    photo2_id TEXT,
+                    photo3_id TEXT,
+                    photo4_id TEXT,
+                    photo1_tg JSONB,
+                    photo2_tg JSONB,
+                    photo3_tg JSONB,
+                    photo4_tg JSONB,
+                    created_at TIMESTAMPTZ,
+                    updated_at TIMESTAMPTZ
+                )
+                """
+            )
+            await con.execute(
+                """
+                CREATE TABLE IF NOT EXISTS matches (
+                    id SERIAL PRIMARY KEY,
+                    user_id BIGINT NOT NULL,
+                    source_chat BIGINT,
+                    thread_id INTEGER,
+                    message_ids JSONB,
+                    text_cache TEXT,
+                    created_at TIMESTAMPTZ NOT NULL
+                )
+                """
+            )
+            await con.execute(
+                """
+                CREATE TABLE IF NOT EXISTS consents (
+                    user_id BIGINT PRIMARY KEY,
+                    accepted_at TIMESTAMPTZ NOT NULL
+                )
+                """
+            )
+            await con.execute(
+                """
+                CREATE TABLE IF NOT EXISTS subs (
+                    user_id   BIGINT PRIMARY KEY,
+                    status    TEXT NOT NULL CHECK(status IN ('active','inactive')),
+                    updated_at TIMESTAMPTZ NOT NULL
+                )
+                """
+            )
+            await con.execute("CREATE INDEX IF NOT EXISTS idx_matches_user_created ON matches(user_id, created_at DESC)")
+
 def purge_old_matches(con=None):
     own = False
     if con is None:
-        con = sqlite3.connect(DB_PATH); own = True
-    cur = con.cursor()
-    # заменяем 'T' -> ' ' для корректного парсинга датой SQLite
-    cur.execute("""
-        DELETE FROM matches
-        WHERE datetime(replace(created_at,'T',' ')) < datetime('now','-7 days')
-    """)
-    deleted = cur.rowcount or 0
+        con = _db_connect(); own = True
+    with con.cursor() as cur:
+        cur.execute("DELETE FROM matches WHERE created_at < NOW() - INTERVAL '7 days'")
+        deleted = cur.rowcount
     if own:
         con.commit(); con.close()
     return deleted
 
+async def a_purge_old_matches(days: int = 7) -> int:
+    pool = await _ensure_pg_pool()
+    async with pool.acquire() as con:
+        cmd = await con.execute(
+            "DELETE FROM matches WHERE created_at < NOW() - ($1::text || ' days')::interval",
+            int(days),
+        )
+        try:
+            return int(cmd.split()[-1])
+        except Exception:
+            return 0
+
 def get_user_matches(uid: int):
-    con = sqlite3.connect(DB_PATH)
-    con.row_factory = sqlite3.Row
-    cur = con.cursor()
-    purge_old_matches(con)
-    cur.execute(
-        """
-        SELECT * FROM matches
-        WHERE user_id=?
-        ORDER BY datetime(replace(created_at,'T',' ')) DESC, id DESC
-        """,
-        (uid,)
-    )
-    rows = [dict(r) for r in cur.fetchall()]
+    con = _db_connect()
+    with con.cursor(cursor_factory=RealDictCursor) as cur:
+        purge_old_matches(con)
+        cur.execute(
+            "SELECT * FROM matches WHERE user_id=%s ORDER BY created_at DESC, id DESC",
+            (uid,)
+        )
+        rows = [dict(r) for r in cur.fetchall()]
     con.close()
     for r in rows:
         try:
-            mids = json.loads(r.get("message_ids") or "[]")
+            mids = r.get("message_ids") or []
             r["message_ids"] = [int(x) for x in mids]
         except Exception:
             r["message_ids"] = []
     return rows
 
+async def a_get_user_matches(uid: int, limit: int = 50) -> list[dict]:
+    pool = await _ensure_pg_pool()
+    async with pool.acquire() as con:
+        await con.execute("DELETE FROM matches WHERE created_at < NOW() - INTERVAL '7 days'")
+        rows = await con.fetch(
+            "SELECT * FROM matches WHERE user_id=$1 ORDER BY created_at DESC, id DESC LIMIT $2",
+            int(uid), int(limit)
+        )
+        out = [dict(r) for r in rows]
+        for r in out:
+            try:
+                mids = r.get("message_ids") or []
+                r["message_ids"] = [int(x) for x in mids]
+            except Exception:
+                r["message_ids"] = []
+        return out
+
 def delete_match_by_id(match_id: int, uid: int) -> bool:
-    con = sqlite3.connect(DB_PATH)
-    cur = con.cursor()
-    try:
-        cur.execute("DELETE FROM matches WHERE id=? AND user_id=?", (match_id, uid))
-        con.commit()
-        return (cur.rowcount or 0) > 0
-    finally:
-        con.close()
+    con = _db_connect()
+    with con.cursor() as cur:
+        cur.execute("DELETE FROM matches WHERE id=%s AND user_id=%s", (match_id, uid))
+        deleted_count = cur.rowcount
+    con.commit()
+    con.close()
+    return deleted_count > 0
+
+async def a_delete_match_by_id(match_id: int, uid: int) -> bool:
+    pool = await _ensure_pg_pool()
+    async with pool.acquire() as con:
+        cmd = await con.execute("DELETE FROM matches WHERE id=$1 AND user_id=$2", int(match_id), int(uid))
+        try:
+            return int(cmd.split()[-1]) > 0
+        except Exception:
+            return False
+
 # ---- согласие: хелперы ----------------------------------------------------
 
 def has_consent(uid: int) -> bool:
-    con = sqlite3.connect(DB_PATH)
-    cur = con.cursor()
-    cur.execute("SELECT 1 FROM consents WHERE user_id=?", (uid,))
-    ok = cur.fetchone() is not None
+    con = _db_connect()
+    with con.cursor() as cur:
+        cur.execute("SELECT 1 FROM consents WHERE user_id=%s", (uid,))
+        ok = cur.fetchone() is not None
     con.close()
     return ok
 
 def store_consent(uid: int):
-    con = sqlite3.connect(DB_PATH)
-    cur = con.cursor()
-    cur.execute(
-        "INSERT OR REPLACE INTO consents(user_id, accepted_at) VALUES(?, ?)",
-        (uid, datetime.utcnow().isoformat())
-    )
+    con = _db_connect()
+    with con.cursor() as cur:
+        cur.execute(
+            "INSERT INTO consents(user_id, accepted_at) VALUES(%s, %s) ON CONFLICT (user_id) DO NOTHING",
+            (uid, datetime.now(timezone.utc))
+        )
     con.commit()
     con.close()
+
+async def a_store_consent(uid: int):
+    pool = await _ensure_pg_pool()
+    async with pool.acquire() as con:
+        await con.execute(
+            "INSERT INTO consents(user_id, accepted_at) VALUES($1, $2) ON CONFLICT (user_id) DO NOTHING",
+            int(uid), datetime.now(timezone.utc)
+        )
 
 # ---- подписка: хелперы -----------------------------------------------------
 
 def get_sub_status(uid: int) -> str:
-    con = sqlite3.connect(DB_PATH)
-    cur = con.cursor()
-    try:
-        cur.execute("SELECT status FROM subs WHERE user_id=?", (uid,))
-        row = cur.fetchone()
-        return (row[0] if row else "inactive")
-    except sqlite3.OperationalError as e:
+    con = _db_connect()
+    with con.cursor() as cur:
         try:
-            # отсутствует таблица — создадим схему и вернём inactive
-            cur.execute(
-                """
-                CREATE TABLE IF NOT EXISTS subs (
-                    user_id   INTEGER PRIMARY KEY,
-                    status    TEXT NOT NULL CHECK(status IN ('active','inactive')),
-                    updated_at TEXT NOT NULL
-                )
-                """
-            )
-            con.commit()
-        except Exception:
-            pass
-        return "inactive"
-    finally:
-        con.close()
+            cur.execute("SELECT status FROM subs WHERE user_id=%s", (uid,))
+            row = cur.fetchone()
+            return (row[0] if row else "inactive")
+        except psycopg2.Error:
+            return "inactive"
+    con.close()
 
 def set_sub_status(uid: int, status: str):
     status = "active" if status == "active" else "inactive"
-    con = sqlite3.connect(DB_PATH); cur = con.cursor()
-    try:
+    con = _db_connect()
+    with con.cursor() as cur:
         cur.execute(
-            "INSERT INTO subs(user_id, status, updated_at) VALUES(?, ?, ?) "
-            "ON CONFLICT(user_id) DO UPDATE SET status=excluded.status, updated_at=excluded.updated_at",
-            (uid, status, datetime.utcnow().isoformat())
+            "INSERT INTO subs(user_id, status, updated_at) VALUES(%s, %s, %s) ON CONFLICT (user_id) DO UPDATE SET status = EXCLUDED.status, updated_at = EXCLUDED.updated_at",
+            (uid, status, datetime.now(timezone.utc))
         )
-        con.commit()
-    except sqlite3.OperationalError:
-        try:
-            cur.execute(
-                """
-                CREATE TABLE IF NOT EXISTS subs (
-                    user_id   INTEGER PRIMARY KEY,
-                    status    TEXT NOT NULL CHECK(status IN ('active','inactive')),
-                    updated_at TEXT NOT NULL
-                )
-                """
-            )
-            con.commit()
-            cur.execute(
-                "INSERT INTO subs(user_id, status, updated_at) VALUES(?, ?, ?) "
-                "ON CONFLICT(user_id) DO UPDATE SET status=excluded.status, updated_at=excluded.updated_at",
-                (uid, status, datetime.utcnow().isoformat())
-            )
-            con.commit()
-        except Exception:
-            pass
-    finally:
-        con.close()
+    con.commit()
+    con.close()
+
+async def a_set_sub_status(uid: int, status: str):
+    status = "active" if status == "active" else "inactive"
+    pool = await _ensure_pg_pool()
+    async with pool.acquire() as con:
+        await con.execute(
+            "INSERT INTO subs(user_id, status, updated_at) VALUES($1, $2, $3) ON CONFLICT (user_id) DO UPDATE SET status = EXCLUDED.status, updated_at = EXCLUDED.updated_at",
+            int(uid), status, datetime.now(timezone.utc)
+        )
 
 def is_sub_active(uid: int) -> bool:
     return get_sub_status(uid) == "active"
+
+# ---- подписка (plan) и категории (premium) ---------------------------------
+
+def get_sub_plan(uid: int) -> Optional[str]:
+    """Возвращает план подписки (None|'basic'|'premium')"""
+    con = _db_connect()
+    try:
+        with con.cursor() as cur:
+            cur.execute("SELECT plan FROM subs WHERE user_id=%s", (uid,))
+            row = cur.fetchone()
+            return (row[0] if row else None)
+    finally:
+        con.close()
+
+async def a_toggle_user_category(uid: int, code: str):
+    pool = await _ensure_pg_pool()
+    async with pool.acquire() as con:
+        async with con.transaction():
+            exists = await con.fetchval(
+                "SELECT 1 FROM user_category_prefs WHERE user_id=$1 AND category_code=$2",
+                int(uid), code
+            )
+            if exists:
+                await con.execute("DELETE FROM user_category_prefs WHERE user_id=$1 AND category_code=$2", int(uid), code)
+            else:
+                await con.execute(
+                    "INSERT INTO user_category_prefs(user_id, category_code) VALUES($1,$2) ON CONFLICT DO NOTHING",
+                    int(uid), code
+                )
+
+async def a_list_categories() -> list[tuple[str, str]]:
+    pool = await _ensure_pg_pool()
+    async with pool.acquire() as con:
+        rows = await con.fetch("SELECT code, title FROM categories ORDER BY code")
+        return [(r["code"], r["title"]) for r in rows]
+
+async def a_get_user_category_prefs(uid: int) -> set[str]:
+    pool = await _ensure_pg_pool()
+    async with pool.acquire() as con:
+        rows = await con.fetch("SELECT category_code FROM user_category_prefs WHERE user_id=$1", int(uid))
+        return {r["category_code"] for r in rows}
+
+async def a_has_consent(uid: int) -> bool:
+    pool = await _ensure_pg_pool()
+    async with pool.acquire() as con:
+        val = await con.fetchval("SELECT 1 FROM consents WHERE user_id=$1", int(uid))
+        return val is not None
+
+async def a_is_sub_active(uid: int) -> bool:
+    pool = await _ensure_pg_pool()
+    async with pool.acquire() as con:
+        row = await con.fetchrow("SELECT status FROM subs WHERE user_id=$1", int(uid))
+        return bool(row and row["status"] == "active")
+
+async def a_get_sub_plan(uid: int) -> Optional[str]:
+    pool = await _ensure_pg_pool()
+    async with pool.acquire() as con:
+        row = await con.fetchrow("SELECT plan FROM subs WHERE user_id=$1", int(uid))
+        return (row["plan"] if row else None)
+
+def list_categories() -> list[tuple[str, str]]:
+    """Справочник категорий (code, title)"""
+    con = _db_connect()
+    try:
+        with con.cursor() as cur:
+            cur.execute("SELECT code, title FROM categories ORDER BY code")
+            return [(r[0], r[1]) for r in cur.fetchall()]
+    finally:
+        con.close()
+
+def get_user_category_prefs(uid: int) -> set[str]:
+    con = _db_connect()
+    try:
+        with con.cursor() as cur:
+            cur.execute("SELECT category_code FROM user_category_prefs WHERE user_id=%s", (uid,))
+            return {r[0] for r in cur.fetchall()}
+    finally:
+        con.close()
+
+def toggle_user_category(uid: int, code: str):
+    con = _db_connect()
+    try:
+        with con.cursor() as cur:
+            cur.execute("SELECT 1 FROM user_category_prefs WHERE user_id=%s AND category_code=%s", (uid, code))
+            exists = cur.fetchone() is not None
+            if exists:
+                cur.execute("DELETE FROM user_category_prefs WHERE user_id=%s AND category_code=%s", (uid, code))
+            else:
+                cur.execute(
+                    "INSERT INTO user_category_prefs(user_id, category_code) VALUES(%s,%s) ON CONFLICT DO NOTHING",
+                    (uid, code),
+                )
+        con.commit()
+    finally:
+        con.close()
 
 def build_webapp_url(uid: int) -> str:
     """
@@ -368,7 +608,7 @@ async def guard_consent(ev: events.CallbackQuery.Event, action: str) -> bool:
     if action not in CONSENT_ACTIONS:
         return False
     uid = ev.sender_id
-    if has_consent(uid):
+    if await a_has_consent(uid):
         return False
     try:
         await client.edit_message(
@@ -383,7 +623,7 @@ async def guard_consent(ev: events.CallbackQuery.Event, action: str) -> bool:
             parse_mode="markdown",
         )
         # зафиксируем, что это «текущий экран» для дальнейших редактирований
-        STATE.setdefault(uid, {})["screen_id"] = ev.message_id
+        await _state_update(uid, {"screen_id": ev.message_id})
     except Exception:
         # запасной вариант — отправим новым сообщением
         await render_text(uid, ev.chat_id, CONSENT_TEXT, buttons=[
@@ -402,14 +642,13 @@ def button_only(step: Dict[str, Any]) -> bool:
     return False
 
 def upsert_user(user_id: int, data: Dict[str, Any]):
-    con = sqlite3.connect(DB_PATH)
-    cur = con.cursor()
-    now = datetime.utcnow().isoformat()
+    con = _db_connect()
+    now = datetime.now(timezone.utc)
 
     def _to_int(v):
         try:
             return int(str(v).strip())
-        except Exception:
+        except (ValueError, TypeError):
             return None
 
     payload = {
@@ -436,50 +675,45 @@ def upsert_user(user_id: int, data: Dict[str, Any]):
         "photo2_id":     data.get("photo2_id"),
         "photo3_id":     data.get("photo3_id"),
         "photo4_id":     data.get("photo4_id"),
-        # быстрые TG-ссылки (json)
-        "photo1_tg":     json.dumps(data.get("photo1_tg")) if isinstance(data.get("photo1_tg"), dict) else data.get("photo1_tg"),
-        "photo2_tg":     json.dumps(data.get("photo2_tg")) if isinstance(data.get("photo2_tg"), dict) else data.get("photo2_tg"),
-        "photo3_tg":     json.dumps(data.get("photo3_tg")) if isinstance(data.get("photo3_tg"), dict) else data.get("photo3_tg"),
-        "photo4_tg":     json.dumps(data.get("photo4_tg")) if isinstance(data.get("photo4_tg"), dict) else data.get("photo4_tg"),
+        "photo1_tg":     json.dumps(data.get("photo1_tg")) if isinstance(data.get("photo1_tg"), dict) else None,
+        "photo2_tg":     json.dumps(data.get("photo2_tg")) if isinstance(data.get("photo2_tg"), dict) else None,
+        "photo3_tg":     json.dumps(data.get("photo3_tg")) if isinstance(data.get("photo3_tg"), dict) else None,
+        "photo4_tg":     json.dumps(data.get("photo4_tg")) if isinstance(data.get("photo4_tg"), dict) else None,
     }
 
     fields = ", ".join(payload.keys())
-    placeholders = ", ".join("?" for _ in payload)
-    updates = ", ".join(f"{k}=excluded.{k}" for k in payload.keys())
+    placeholders = ", ".join(["%s"] * len(payload))
+    updates = ", ".join(f"{k} = EXCLUDED.{k}" for k in payload.keys())
 
-    cur.execute(
-        f"""
-        INSERT INTO users (user_id, {fields}, created_at, updated_at)
-        VALUES (?, {placeholders}, ?, ?)
-        ON CONFLICT(user_id) DO UPDATE SET
-            {updates},
-            updated_at=excluded.updated_at
-        """,
-        [user_id, *payload.values(), now, now],
-    )
+    with con.cursor() as cur:
+        cur.execute(
+            f"""
+            INSERT INTO users (user_id, {fields}, created_at, updated_at)
+            VALUES (%s, {placeholders}, %s, %s)
+            ON CONFLICT(user_id) DO UPDATE SET
+                {updates},
+                updated_at = EXCLUDED.updated_at
+            """,
+            [user_id, *payload.values(), now, now],
+        )
     con.commit()
     con.close()
 
 def get_user(user_id: int) -> Optional[Dict[str, Any]]:
-    con = sqlite3.connect(DB_PATH)
-    con.row_factory = sqlite3.Row
-    cur = con.cursor()
-    cur.execute("SELECT * FROM users WHERE user_id=?", (user_id,))
-    row = cur.fetchone()
+    con = _db_connect()
+    with con.cursor(cursor_factory=RealDictCursor) as cur:
+        cur.execute("SELECT * FROM users WHERE user_id=%s", (user_id,))
+        row = cur.fetchone()
     con.close()
     if not row:
         return None
-    d = dict(row)
-    # распарсим json из photo*_tg в dict
-    for i in (1, 2, 3, 4):
-        key = f"photo{i}_tg"
-        v = d.get(key)
-        if isinstance(v, str) and v.strip():
-            try:
-                d[key] = json.loads(v)
-            except Exception:
-                pass
-    return d
+    return dict(row)
+
+async def a_get_user(user_id: int) -> Optional[Dict[str, Any]]:
+    pool = await _ensure_pg_pool()
+    async with pool.acquire() as con:
+        row = await con.fetchrow("SELECT * FROM users WHERE user_id=$1", int(user_id))
+        return (dict(row) if row else None)
 # --- bot api ------------------------------------------------------------------
 BOT_API_BASE = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
@@ -547,6 +781,44 @@ async def botapi_copy_message(chat_id: int, from_chat_id: int, message_id: int,
 
 STATE: Dict[int, Dict[str, Any]] = {}
 TMP_MSGS: Dict[int, list] = {}  # временные сообщения для очистки
+
+# --- Redis-backed state (fallback to in-memory STATE) ------------------------
+_STATE_KEY = "ua:state:{uid}"
+
+async def _state_get(uid: int) -> Dict[str, Any]:
+    if _redis is None:
+        return STATE.setdefault(uid, {})
+    try:
+        raw = await _redis.get(_STATE_KEY.format(uid=uid))
+        if not raw:
+            return {}
+        return json.loads(raw)
+    except Exception:
+        return STATE.setdefault(uid, {})
+
+async def _state_update(uid: int, patch: Dict[str, Any]):
+    if not isinstance(patch, dict):
+        return
+    if _redis is None:
+        st = STATE.setdefault(uid, {})
+        st.update(patch)
+        return
+    try:
+        st = await _state_get(uid)
+        st.update(patch)
+        await _redis.set(_STATE_KEY.format(uid=uid), json.dumps(st))
+    except Exception:
+        st = STATE.setdefault(uid, {})
+        st.update(patch)
+
+async def _state_clear(uid: int):
+    if _redis is None:
+        STATE.pop(uid, None)
+        return
+    try:
+        await _redis.delete(_STATE_KEY.format(uid=uid))
+    except Exception:
+        STATE.pop(uid, None)
 
 WELCOME = (
     "🏠**Главное меню**\n\n"
@@ -618,24 +890,32 @@ def build_controls(can_back: bool):
 
 async def render_text(uid: int, chat_id: int, text: str, buttons=None):
     """Редактируем существующий экран или создаём новый; сохраняем screen_id в STATE."""
-    st = STATE.setdefault(uid, {})
+    st = await _state_get(uid)
     screen_id = st.get("screen_id")
     try:
         if screen_id:
             await client.edit_message(chat_id, screen_id, text, buttons=buttons, link_preview=False, parse_mode="markdown")
         else:
             msg: Message = await client.send_message(chat_id, text, buttons=buttons, link_preview=False, parse_mode="markdown")
-            st["screen_id"] = msg.id
+            await _state_update(uid, {"screen_id": msg.id})
     except (MessageIdInvalidError, MessageNotModifiedError):
         msg: Message = await client.send_message(chat_id, text, buttons=buttons, link_preview=False, parse_mode="markdown")
-        st["screen_id"] = msg.id
+        await _state_update(uid, {"screen_id": msg.id})
 
 async def render_menu(chat_id: int, uid: int):
-    active = is_sub_active(uid)
+    active = await a_is_sub_active(uid)
     if active:
         tariff_row = [Button.inline("🟢 ИИ кастинг-агент активен", b"noop")]
     else:
         tariff_row = [Button.inline("⚡ Подключить ИИ кастинг-агента", b"open_tariff")]
+
+    # доп. кнопка категорий для premium
+    extra_rows = []
+    if active and ((await a_get_sub_plan(uid)) == "premium"):
+        extra_rows.append([Button.inline("🎯 Категории (premium)", b"catpick_open")])
+    # кнопка отмены подписки для любого активного плана
+    if active:
+        extra_rows.append([Button.inline("❌ Отменить подписку", b"cancel_sub_open")])
 
     await render_text(
         uid, chat_id, WELCOME,
@@ -644,8 +924,11 @@ async def render_menu(chat_id: int, uid: int):
             [Button.inline("📇 Моя анкета", b"my_profile")],
             [Button.inline("📰 Смотреть кастинги", b"view_castings")],
             tariff_row,
+            *extra_rows,
         ],
     )
+
+# NOTE: category picker handlers will be placed after client initialization.
 
 async def clear_sticky_notices(chat_id: int, uid: int, except_id: Optional[int] = None):
     """
@@ -695,7 +978,7 @@ def _build_apply_text(u: dict, ad_text: str) -> str:
         "Моя анкета:\n"
         f"{card}"
         )
-def build_apply_button_dict(uid: int, ad_text: str) -> dict:
+async def build_apply_button_dict(uid: int, ad_text: str) -> dict:
     """
     Возвращает словарь кнопки для inline_keyboard (Bot API):
     - при e-mail -> web_app
@@ -703,7 +986,7 @@ def build_apply_button_dict(uid: int, ad_text: str) -> dict:
     - иначе      -> callback_data 'apply_unavailable'
     """
     contact = _find_contact_in_text(ad_text)
-    u = get_user(uid)
+    u = await a_get_user(uid)
     if not u:
         return { "text": "✅ Откликнуться", "callback_data": "apply_unavailable" }
 
@@ -736,12 +1019,12 @@ def build_apply_button_dict(uid: int, ad_text: str) -> dict:
     enc = up.quote(msg)
     return { "text": "✅ Откликнуться", "url": f"https://t.me/share/url?text={enc}" }
 
-def _build_apply_url(uid: int, ad_text: str) -> Optional[str]:
+async def _build_apply_url(uid: int, ad_text: str) -> Optional[str]:
     """
     Строим URL для «Откликнуться».
     Приоритет: телефон (wa.me) > @username (t.me/share с ссылкой на контакт) > fallback (t.me/share только с текстом).
     """
-    u = get_user(uid)
+    u = await a_get_user(uid)
     if not u:
         return None
 
@@ -761,8 +1044,8 @@ def _build_apply_url(uid: int, ad_text: str) -> Optional[str]:
     # Fallback: контакта нет — откроется «Поделиться» в Telegram с готовым текстом
     return f"https://t.me/share/url?text={enc}"
 
-def build_casting_keyboard(uid: int, caption: str) -> dict:
-    apply_btn = build_apply_button_dict(uid, caption)
+async def build_casting_keyboard(uid: int, caption: str) -> dict:
+    apply_btn = await build_apply_button_dict(uid, caption)
     return {
         "inline_keyboard": [
             [ { "text":"◀️", "callback_data":"cast_prev" }, { "text":"▶️", "callback_data":"cast_next" } ],
@@ -797,24 +1080,28 @@ async def _render_match_view(uid: int, chat_id: int, match: dict, pos: int, tota
     Важно: «Откликнуться» (в т.ч. web_app при e-mail) теперь всегда внутри одного сообщения.
     """
     # 0) очистим предыдущий показ
-    st = STATE.setdefault(uid, {})
+    st = await _state_get(uid)
     old_ids = st.get("castings_msg_ids") or []
     if old_ids:
         try:
             await client.delete_messages(chat_id, old_ids, revoke=True)
         except Exception:
             pass
-        st["castings_msg_ids"] = []
+        await _state_update(uid, {"castings_msg_ids": []})
 
     # если раньше для навигации или каста были Bot API-сообщения — удалим их
-    prev_api_mid = st.pop("castings_api_mid", None)
+    prev_api_mid = st.get("castings_api_mid")
+    if prev_api_mid is not None:
+        await _state_update(uid, {"castings_api_mid": None})
     if prev_api_mid:
         try:
             await botapi_delete_message(chat_id, prev_api_mid)
         except Exception:
             pass
 
-    prev_nav_mid = st.pop("castings_nav_mid", None)
+    prev_nav_mid = st.get("castings_nav_mid")
+    if prev_nav_mid is not None:
+        await _state_update(uid, {"castings_nav_mid": None})
     if prev_nav_mid:
         try:
             await botapi_delete_message(chat_id, prev_nav_mid)
@@ -854,7 +1141,7 @@ async def _render_match_view(uid: int, chat_id: int, match: dict, pos: int, tota
     full_caption = (caption + f"\n\nПозиция: {pos}/{total}").strip()
 
     # 2a) Клавиатура (Bot API) с корректной «Откликнуться» (включая web_app при e-mail)
-    kb_json = build_casting_keyboard(uid, caption)
+    kb_json = await build_casting_keyboard(uid, caption)
 
     # 3) случай: РОВНО ОДНО медиа (не альбом) -> копируем сообщением Bot API с новой подписью и клавиатурой
     if len(src_msgs) == 1:
@@ -1045,16 +1332,14 @@ def prefill_answers_from_user(u: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 async def delete_album(chat_id: int, uid: int):
-    st = STATE.get(uid)
-    if not st:
-        return
+    st = await _state_get(uid)
     ids = st.get("album_msg_ids") or []
     if ids:
         try:
             await client.delete_messages(chat_id, ids, revoke=True)
         except Exception:
             pass
-        st["album_msg_ids"] = []
+        await _state_update(uid, {"album_msg_ids": []})
 
 async def delete_current_screen(chat_id: int, uid: int):
     st = STATE.setdefault(uid, {"screen_id": None, "album_msg_ids": []})
@@ -1194,10 +1479,10 @@ async def advance_or_finish(uid: int, chat_id: int):
 
     # 🔚 РАННИЙ ФИНИШ ДЛЯ ТОЧЕЧНОГО РЕДАКТИРОВАНИЯ
     if st.pop("finish_after_step", False):
-        old = get_user(uid) or {}
+        old = await a_get_user(uid) or {}
         to_save = {**old, **st.get("answers", {})}
-        upsert_user(uid, to_save)
-        u = get_user(uid)
+        await a_upsert_user(uid, to_save)
+        u = await a_get_user(uid)
 
         # убрать текущий экран мастера, если ещё висит
         try:
@@ -1224,10 +1509,10 @@ async def advance_or_finish(uid: int, chat_id: int):
 
     # если дошли до конца — сохраняем и выходим на профиль
     if st["step"] >= len(STEPS):
-        old = get_user(uid) or {}
+        old = await a_get_user(uid) or {}
         to_save = {**old, **st["answers"]}
-        upsert_user(uid, to_save)
-        u = get_user(uid)
+        await a_upsert_user(uid, to_save)
+        u = await a_get_user(uid)
 
         try:
             if st.get("screen_id"):
@@ -1304,6 +1589,90 @@ async def cleanup_webapp_leftovers(chat_id: int, limit: int = 50):
 
 client = TelegramClient("user_reg_bot", API_ID, API_HASH).start(bot_token=BOT_TOKEN)
 
+# --- Category picker (premium) -----------------------------------------------
+
+async def _render_category_picker(uid: int, chat_id: int):
+    cats = await a_list_categories()
+    selected = await a_get_user_category_prefs(uid)
+    rows = []
+    for code, title in cats:
+        mark = "✅" if code in selected else "▫️"
+        rows.append([Button.inline(f"{mark} {title}", f"catpick_toggle:{code}".encode("utf-8"))])
+    rows.append([Button.inline("🏠 Главное меню", b"home")])
+    await render_text(uid, chat_id, "Выберите категории премиум-рассылки:", buttons=rows)
+
+@client.on(events.CallbackQuery(pattern=b"^catpick_open$"))
+async def on_catpick_open(ev: events.CallbackQuery.Event):
+    uid = ev.sender_id
+    if not (await a_is_sub_active(uid)) or (await a_get_sub_plan(uid)) != "premium":
+        await ev.answer("Доступно только для premium", alert=True)
+        return
+    await _render_category_picker(uid, ev.chat_id)
+
+@client.on(events.CallbackQuery(pattern=b"^catpick_toggle:"))
+async def on_catpick_toggle(ev: events.CallbackQuery.Event):
+    uid = ev.sender_id
+    if not (await a_is_sub_active(uid)) or (await a_get_sub_plan(uid)) != "premium":
+        await ev.answer("Доступно только для premium", alert=True)
+        return
+    try:
+        code = ev.data.decode("utf-8").split(":",1)[1]
+        await a_toggle_user_category(uid, code)
+        await _render_category_picker(uid, ev.chat_id)
+    except Exception:
+        await ev.answer("Ошибка", alert=True)
+
+# --- handlers: cancel subscription ------------------------------------------
+
+@client.on(events.CallbackQuery(pattern=b"^cancel_sub_open$"))
+async def on_cancel_sub_open(ev: events.CallbackQuery.Event):
+    uid = ev.sender_id
+    if not (await a_is_sub_active(uid)):
+        await ev.answer("Подписка уже неактивна", alert=True)
+        return
+    text = (
+        "❓ Вы уверены, что хотите отменить подписку?\n\n"
+        "Доступ к рассылкам будет остановлен сразу."
+    )
+    btns = [
+        [Button.inline("✅ Да, отменить", b"cancel_sub_confirm")],
+        [Button.inline("⬅️ Назад", b"home")],
+    ]
+    await render_text(uid, ev.chat_id, text, buttons=btns)
+
+@client.on(events.CallbackQuery(pattern=b"^cancel_sub_confirm$"))
+async def on_cancel_sub_confirm(ev: events.CallbackQuery.Event):
+    uid = ev.sender_id
+    # 1) Попробовать отменить в TipTopPay через наш вебхук (если запущен и настроен)
+    try:
+        url = f"{TTP_WEBHOOK_BASE}/api/tiptoppay/subscriptions/cancel-by-account"
+        payload = {"accountId": str(uid)}
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
+            await session.post(url, json=payload)
+    except Exception:
+        pass
+    # 2) Локально деактивируем подписку и очищаем премиум-признак/срок/категории
+    try:
+        pool = await _ensure_pg_pool()
+        async with pool.acquire() as con:
+            async with con.transaction():
+                await con.execute(
+                    """
+                    UPDATE subs
+                    SET status='inactive', plan=NULL, valid_until=NULL, updated_at=NOW()
+                    WHERE user_id=$1
+                    """,
+                    int(uid)
+                )
+                await con.execute("DELETE FROM user_category_prefs WHERE user_id=$1", int(uid))
+        await ev.answer("Подписка отменена", alert=False)
+    except Exception:
+        await ev.answer("Ошибка при отмене", alert=True)
+        return
+    # вернёмся в главное меню
+    STATE.setdefault(uid, {})["screen_id"] = None
+    await render_menu(ev.chat_id, uid)
+
 # ------- CONSENT handlers ---------------------------------------------------
 # добавь это рядом с остальными хэндлерами
 def _check_webapp_sig(uid: int, ts: str, sig: str) -> bool:
@@ -1331,7 +1700,7 @@ async def start_with_payload(ev: events.NewMessage.Event):
             except Exception:
                 uid_int = 0
             if uid_int == ev.sender_id and _check_webapp_sig(uid_int, ts, sig):
-                set_sub_status(uid_int, "active")
+                await a_set_sub_status(uid_int, "active")
                 await render_menu(ev.chat_id, uid_int)
                 return
     # если пэйлоад не наш — можешь показать обычное меню:
@@ -1346,7 +1715,7 @@ async def consent_ok(ev: events.CallbackQuery.Event):
     uid = ev.sender_id
     raw = ev.data.decode("utf-8", errors="ignore")
     _, action = raw.split(":", 1)
-    store_consent(uid)
+    await a_store_consent(uid)
     # после принятия — выполнить запрошенное действие
     if action == "start_form_or_profile":
         await start_form_or_profile(ev)
@@ -1702,7 +2071,7 @@ async def edit_profile(ev: events.CallbackQuery.Event):
         if "step" in st and "answers" in st:
             return
 
-        u = get_user(uid)
+        u = await a_get_user(uid)
         if not u:
             STATE[uid].update({"step": 0, "answers": {}, "scope": None})
             await render_step(uid, chat_id)
@@ -1730,7 +2099,7 @@ async def edit_form(ev: events.CallbackQuery.Event):
         return
     st["busy"] = True
     try:
-        u = get_user(uid)
+        u = await a_get_user(uid)
         if not u:
             await delete_album(chat_id, uid)
             await clear_tmp_msgs(chat_id, uid)
@@ -1770,7 +2139,7 @@ async def edit_photos(ev: events.CallbackQuery.Event):
         return
     st["busy"] = True
     try:
-        u = get_user(uid)
+        u = await a_get_user(uid)
         if not u:
             await delete_album(chat_id, uid)
             await clear_tmp_msgs(chat_id, uid)
@@ -1810,7 +2179,7 @@ async def start_form_or_profile(ev: events.CallbackQuery.Event):
         return
     st["busy"] = True
     try:
-        u = get_user(uid)
+        u = await a_get_user(uid)
 
         # подчистка хвостов
         await delete_album(chat_id, uid)
@@ -1847,7 +2216,7 @@ async def my_profile(ev: events.CallbackQuery.Event):
         return
     st["busy"] = True
     try:
-        u = get_user(uid)
+        u = await a_get_user(uid)
 
         # подчистка хвостов
         await delete_album(chat_id, uid)
@@ -1873,7 +2242,7 @@ async def view_castings(ev: events.CallbackQuery.Event):
     st = STATE.setdefault(uid, {"screen_id": None, "album_msg_ids": []})
 
     # 🔐 ЗАМОК: пропускаем дальше только с активной подпиской
-    if not is_sub_active(uid):
+    if not (await a_is_sub_active(uid)):
         # При неактивной подписке показываем экран подключения тарифа и выходим
         try:
             await ev.delete()
@@ -1916,7 +2285,7 @@ async def view_castings(ev: events.CallbackQuery.Event):
         return
     st["busy"] = True
     try:
-        matches = get_user_matches(uid)   # <= твоя функция из utils.py
+        matches = await a_get_user_matches(uid)
         for it in matches:
             it.setdefault("source_chat", None)
             it.setdefault("message_ids", [])
@@ -2057,7 +2426,7 @@ async def cast_hide(ev: events.CallbackQuery.Event):
 
         # Удаляем матч из БД и локального списка
         if match_id:
-            delete_match_by_id(match_id, uid)
+            await a_delete_match_by_id(match_id, uid)
 
         items.pop(idx)
 
@@ -2115,7 +2484,7 @@ async def go_back(ev: events.CallbackQuery.Event):
 
         async def show_single_screen():
             await clear_tmp_msgs(chat_id, uid)
-            u = get_user(uid)
+            u = await a_get_user(uid)
             if not u:
                 await delete_album(chat_id, uid)
                 await clear_sticky_notices(chat_id, uid, except_id=getattr(ev, "message_id", None))
@@ -2139,7 +2508,7 @@ async def go_back(ev: events.CallbackQuery.Event):
 
             if scope in ("form", "photos"):
                 await clear_tmp_msgs(chat_id, uid)
-                u = get_user(uid)
+                u = await a_get_user(uid)
                 if u:
                     await show_profile_screen(uid, chat_id, u, reposition=True, edit_mode=True, reset_album=False)
                 else:
@@ -2168,7 +2537,7 @@ async def go_back(ev: events.CallbackQuery.Event):
             st.pop("answers", None)
             if scope in ("form", "photos"):
                 await clear_tmp_msgs(chat_id, uid)
-                u = get_user(uid)
+                u = await a_get_user(uid)
                 if u:
                     await show_profile_screen(uid, chat_id, u, reposition=True, edit_mode=True, reset_album=False)
                 else:
@@ -2205,7 +2574,7 @@ async def edit_single_field(ev: events.CallbackQuery.Event):
         return
     st["busy"] = True
     try:
-        u = get_user(uid)
+        u = await a_get_user(uid)
         if not u:
             await delete_album(chat_id, uid)
             await clear_tmp_msgs(chat_id, uid)
@@ -2385,15 +2754,17 @@ async def show_profile_screen(
     edit_mode: bool = False,
     reset_album: bool = False,
 ):
-    active = is_sub_active(uid)
-    st = STATE.setdefault(uid, {"screen_id": None, "album_msg_ids": []})
+    active = await a_is_sub_active(uid)
+    st = await _state_get(uid)
+    st.setdefault("screen_id", None)
+    st.setdefault("album_msg_ids", [])
 
     if reposition and st.get("screen_id"):
         try:
             await client.delete_messages(chat_id, st["screen_id"])
         except Exception:
             pass
-        st["screen_id"] = None
+        await _state_update(uid, {"screen_id": None})
 
     # Меню редактирования — без альбома
     if edit_mode:
@@ -2417,6 +2788,7 @@ async def show_profile_screen(
     if reset_album:
         await delete_album(chat_id, uid)
 
+    st = await _state_get(uid)
     album_ids = st.get("album_msg_ids") or []
     if not album_ids:
         media = []
@@ -2441,9 +2813,11 @@ async def show_profile_screen(
         if media:
             try:
                 msgs = await client.send_file(chat_id, media, album=True)
-                st["album_msg_ids"] = [m.id for m in msgs]
+                await _state_update(uid, {"album_msg_ids": [m.id for m in msgs]})
             except Exception:
-                st["album_msg_ids"] = []
+                await _state_update(uid, {"album_msg_ids": []})
+            # небольшая задержка, чтобы альбом оказался выше текста в истории
+            await asyncio.sleep(0.2)
 
     txt = "📇 **Твоя анкета:**\n\n" + format_summary(u, show_hint=not active)
     buttons = [

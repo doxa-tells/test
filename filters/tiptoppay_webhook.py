@@ -1,7 +1,8 @@
 # tiptoppay_webhook.py
 # Запуск: uvicorn tiptoppay_webhook:app --host 0.0.0.0 --port 8000
 
-import os, hmac, hashlib, base64, json, sqlite3
+import os, hmac, hashlib, base64, json, psycopg2
+from psycopg2.extras import RealDictCursor
 from datetime import datetime, timedelta
 from fastapi import FastAPI, Request, Header
 from fastapi.responses import JSONResponse
@@ -11,13 +12,6 @@ WEBAPP_SIGNING_SECRET = os.getenv("WEBAPP_SIGNING_SECRET", "")  # тот же с
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "https://roletapp.kz,http://localhost:5173").split(",")
 
 # === Настройки ===
-DB_PATH = os.getenv(
-    "DB_PATH",
-    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "actors.db"))
-)
-DB_BUSY_TIMEOUT_MS = int(os.getenv("DB_BUSY_TIMEOUT_MS", "5000"))
-DB_MAX_RETRIES = int(os.getenv("DB_MAX_RETRIES", "5"))
-DB_RETRY_SLEEP_MS = int(os.getenv("DB_RETRY_SLEEP_MS", "200"))
 TIPTOP_API_PASSWORD = os.getenv("TIPTOP_API_PASSWORD", "")
 # Делать ли подпись обязательной. По умолчанию ВЫКЛ (совместимость с TipTopPay кабинетами без заголовка подписи)
 TIPTOP_SIGNATURE_REQUIRED = os.getenv("TIPTOP_SIGNATURE_REQUIRED", "0").lower() in ("1","true","yes","on")
@@ -32,12 +26,6 @@ SUB_START_OFFSET_DAYS = int(os.getenv("TIPTOP_SUB_START_OFFSET_DAYS", "30"))  # 
 
 app = FastAPI(title="TipTopPay Webhook")
 
-# Стартовый лог для диагностики пути к БД
-try:
-    print(f"[tiptoppay_webhook] Using DB_PATH={DB_PATH}")
-except Exception:
-    pass
-
 # CORS для фронта, который дергает /api/sign
 app.add_middleware(
     CORSMiddleware,
@@ -46,57 +34,119 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# === БД ===
+# === DB Connection ===
+def _db_connect():
+    return psycopg2.connect(
+        dbname=os.getenv("PG_DB"),
+        user=os.getenv("PG_USER"),
+        password=os.getenv("PG_PASSWORD"),
+        host=os.getenv("PG_HOST"),
+        port=os.getenv("PG_PORT")
+    )
+
 def ensure_db():
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    con = sqlite3.connect(DB_PATH, timeout=max(0.001, DB_BUSY_TIMEOUT_MS/1000))
-    cur = con.cursor()
-    try:
-        cur.execute("PRAGMA journal_mode=WAL;")
-        cur.execute("PRAGMA synchronous=NORMAL;")
-        cur.execute(f"PRAGMA busy_timeout={DB_BUSY_TIMEOUT_MS};")
-    except Exception:
-        pass
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS subs(
-            user_id    INTEGER PRIMARY KEY,
-            status     TEXT NOT NULL CHECK(status IN ('active','inactive')),
-            updated_at TEXT NOT NULL
+    con = _db_connect()
+    with con.cursor() as cur:
+        # base table
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS subs(
+                user_id    BIGINT PRIMARY KEY,
+                status     TEXT NOT NULL CHECK(status IN ('active','inactive')),
+                updated_at TIMESTAMPTZ NOT NULL
+            )
+            """
         )
-    """)
+        # extend for plan/valid_until if not exists (idempotent)
+        cur.execute("ALTER TABLE subs ADD COLUMN IF NOT EXISTS plan TEXT")
+        cur.execute("ALTER TABLE subs ADD COLUMN IF NOT EXISTS valid_until TIMESTAMPTZ")
     con.commit()
     con.close()
 
 def set_sub_status(uid: str, status: str):
+    """Backward-compat helper: updates only status/updated_at."""
     status = "active" if status == "active" else "inactive"
-    import time as _time
-    attempt = 0
-    while True:
-        try:
-            con = sqlite3.connect(DB_PATH, timeout=max(0.001, DB_BUSY_TIMEOUT_MS/1000))
-            cur = con.cursor()
-            try:
-                cur.execute(f"PRAGMA busy_timeout={DB_BUSY_TIMEOUT_MS};")
-            except Exception:
-                pass
+    con = _db_connect()
+    with con.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO subs(user_id, status, updated_at)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (user_id)
+            DO UPDATE SET status = EXCLUDED.status, updated_at = EXCLUDED.updated_at;
+            """,
+            (uid, status, datetime.utcnow())
+        )
+    con.commit(); con.close()
+
+def upsert_sub(uid: str, *, status: str, plan: str | None, valid_until):
+    """Upsert with plan and valid_until if provided."""
+    status = "active" if status == "active" else "inactive"
+    con = _db_connect()
+    with con.cursor() as cur:
+        if plan is None and valid_until is None:
             cur.execute(
-                "INSERT INTO subs(user_id, status, updated_at) VALUES(?, ?, ?) "
-                "ON CONFLICT(user_id) DO UPDATE SET status=excluded.status, updated_at=excluded.updated_at",
-                (uid, status, datetime.utcnow().isoformat())
+                """
+                INSERT INTO subs(user_id, status, updated_at)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (user_id)
+                DO UPDATE SET status = EXCLUDED.status, updated_at = EXCLUDED.updated_at;
+                """,
+                (uid, status, datetime.utcnow()),
             )
-            con.commit()
-            con.close()
-            break
-        except sqlite3.OperationalError as e:
-            try:
-                con.close()
-            except Exception:
-                pass
-            if "locked" in str(e).lower() and attempt < DB_MAX_RETRIES:
-                _time.sleep(DB_RETRY_SLEEP_MS/1000)
-                attempt += 1
-                continue
-            raise
+        else:
+            cur.execute(
+                """
+                INSERT INTO subs(user_id, status, plan, valid_until, updated_at)
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (user_id)
+                DO UPDATE SET status = EXCLUDED.status,
+                              plan = COALESCE(EXCLUDED.plan, subs.plan),
+                              valid_until = COALESCE(EXCLUDED.valid_until, subs.valid_until),
+                              updated_at = EXCLUDED.updated_at;
+                """,
+                (uid, status, plan, valid_until, datetime.utcnow()),
+            )
+    con.commit(); con.close()
+
+def _extract_plan(payload: dict) -> str | None:
+    """Try to detect plan from payload/metadata/description: returns 'premium'|'basic'|None"""
+    # metadata.plan
+    md = payload.get("metadata") or {}
+    if isinstance(md, dict):
+        plan = (md.get("plan") or md.get("tariff") or "").strip().lower()
+        if plan in ("premium", "basic"):
+            return plan
+    # direct fields
+    for k in ("Plan", "plan", "Tariff", "tariff"):
+        v = (payload.get(k) or "").strip().lower()
+        if v in ("premium", "basic"):
+            return v
+    # product/description text search
+    for k in ("Product", "ProductName", "Description", "description"):
+        v = (payload.get(k) or "").strip().lower()
+        if not v:
+            continue
+        if "premium" in v or "премиум" in v:
+            return "premium"
+        if "basic" in v or "базов" in v:
+            return "basic"
+    return None
+
+def _compute_valid_until(payload: dict) -> datetime | None:
+    """Compute next validity. Prefer interval/period; else default 30 days."""
+    try:
+        interval = (payload.get("interval") or payload.get("Interval") or SUB_INTERVAL).lower()
+        period = int(payload.get("period") or payload.get("Period") or SUB_PERIOD)
+        now = datetime.utcnow()
+        if interval.startswith("day"):
+            return now + timedelta(days=period)
+        if interval.startswith("week"):
+            return now + timedelta(weeks=period)
+        # Month default
+        return now + timedelta(days=30 * period)
+    except Exception:
+        return datetime.utcnow() + timedelta(days=30)
 
 # === Подпись TipTop Pay: HMAC-SHA256(raw) -> base64, заголовок X-Content-HMAC ===
 def _hmac_base64(secret: str, data: bytes) -> str:
@@ -285,7 +335,9 @@ async def ttp_subscriptions_create(request: Request):
             uid = str(body.get("accountId") or body.get("AccountId") or "").strip()
             if uid.isdigit():
                 ensure_db()
-                set_sub_status(uid, "active")
+                plan = (body.get("plan") or body.get("Plan") or "").strip().lower() or _extract_plan(body) or "basic"
+                valid_until = _compute_valid_until(body)
+                upsert_sub(uid, status="active", plan=plan, valid_until=valid_until)
     except Exception:
         pass
     return JSONResponse(data, status_code=(code or 502))
@@ -323,7 +375,7 @@ async def ttp_subscriptions_cancel(request: Request):
                 uid = str((model or {}).get("AccountId") or "").strip()
                 if uid.isdigit():
                     ensure_db()
-                    set_sub_status(uid, "inactive")
+                    upsert_sub(uid, status="inactive", plan=None, valid_until=None)
     except Exception:
         pass
     return JSONResponse(data, status_code=(code or 502))
@@ -432,9 +484,11 @@ async def tiptoppay_webhook(
     # 5) Обновление БД
     if uid and new_status:
         try:
-            set_sub_status(uid, new_status)
+            plan = _extract_plan(payload)
+            valid_until = _compute_valid_until(payload) if new_status == "active" else None
+            upsert_sub(uid, status=new_status, plan=plan, valid_until=valid_until)
             try:
-                print(f"[tiptoppay_webhook] set_sub_status uid={uid} -> {new_status}")
+                print(f"[tiptoppay_webhook] upsert_sub uid={uid} -> status={new_status}, plan={plan}, valid_until={valid_until}")
             except Exception:
                 pass
         except Exception as e:
@@ -467,9 +521,9 @@ async def tiptoppay_webhook(
             }
             # Пробуем создать рекуррент (ошибку не пробрасываем в ответ вебхука)
             await _ttp_post("/subscriptions/create", sub_payload)
-            # и пометим локально active
+            # и пометим локально active (без изменения плана)
             try:
-                ensure_db(); set_sub_status(str(uid), "active")
+                ensure_db(); upsert_sub(str(uid), status="active", plan=None, valid_until=_compute_valid_until(sub_payload))
             except Exception:
                 pass
     except Exception:

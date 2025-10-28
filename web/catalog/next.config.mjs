@@ -4,8 +4,6 @@ const nextConfig = {
   output: "standalone",
   experimental: {
     typedRoutes: true,
-    // нужно для нативного модуля better-sqlite3 в серверных компонентов/роутах
-    serverComponentsExternalPackages: ["better-sqlite3"],
   },
   images: { unoptimized: true },
   webpack: (config, { isServer }) => {

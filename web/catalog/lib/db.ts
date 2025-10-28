@@ -1,29 +1,31 @@
 // web/catalog/lib/db.ts
 import "server-only";
-import Database from "better-sqlite3";
-import fs from "node:fs";
-import path from "node:path";
+import { Pool } from 'pg';
 
-let _db: Database | null = null;
+let pool: Pool | null = null;
 
-function resolveDbPath(): string {
-  const envPath = (process.env.DB_PATH || "").trim();
-  if (envPath) {
-    // поддерживаем относительный путь в DB_PATH
-    return path.isAbsolute(envPath) ? envPath : path.resolve(process.cwd(), envPath);
-  }
-  // по умолчанию: ../../data/actors.db (из каталога web/catalog)
-  return path.resolve(process.cwd(), "../../data/actors.db");
+function getPool() {
+    if (pool) return pool;
+
+    pool = new Pool({
+        user: process.env.PG_USER,
+        host: process.env.PG_HOST,
+        database: process.env.PG_DB,
+        password: process.env.PG_PASSWORD,
+        port: parseInt(process.env.PG_PORT || "5432"),
+    });
+    return pool;
 }
 
-export function db() {
-  if (_db) return _db;
-  const dbPath = resolveDbPath();
-  if (!fs.existsSync(dbPath)) {
-    throw new Error(`actors.db not found: ${dbPath}`);
-  }
-  _db = new Database(dbPath, { readonly: true });
-  return _db;
+export async function query(sql: string, params: any[] = []) {
+    const pool = getPool();
+    const client = await pool.connect();
+    try {
+        const result = await client.query(sql, params);
+        return result.rows;
+    } finally {
+        client.release();
+    }
 }
 
 export type Actor = {
@@ -68,100 +70,93 @@ export type CatalogFilters = {
 };
 
 /** Список актёров с фильтрами */
-export function listActors(filters: CatalogFilters = {}): Actor[] {
-  const {
-    q, sex, city, look_type, body_type, hair_color, eye_color, lang,
-    heightMin, heightMax, ageFrom, ageTo,
-    limit = 60, offset = 0,
-  } = filters;
+export async function listActors(filters: CatalogFilters = {}): Promise<Actor[]> {
+    const {
+        q, sex, city, look_type, body_type, hair_color, eye_color, lang,
+        heightMin, heightMax, ageFrom, ageTo,
+        limit = 60, offset = 0,
+    } = filters;
 
-  const where: string[] = ["full_name IS NOT NULL AND full_name <> ''"];
-  const args: (string | number)[] = [];
+    let whereClauses: string[] = ["full_name IS NOT NULL AND full_name <> ''"];
+    let queryParams: any[] = [];
+    let paramIndex = 1;
 
-  if (q && q.trim()) {
-    where.push("full_name LIKE ?");
-    args.push(`%${q.trim()}%`);
-  }
-  if (sex && sex.trim()) {
-    where.push("sex = ?");
-    args.push(sex.trim());
-  }
-  if (city && city.trim()) {
-    where.push("cities LIKE ?");
-    args.push(`%${city.trim()}%`);
-  }
-  if (look_type && look_type.trim()) {
-    where.push("look_type = ?");
-    args.push(look_type.trim());
-  }
-  if (body_type && body_type.trim()) {
-    where.push("body_type = ?");
-    args.push(body_type.trim());
-  }
-  if (hair_color && hair_color.trim()) {
-    where.push("hair_color = ?");
-    args.push(hair_color.trim());
-  }
-  if (eye_color && eye_color.trim()) {
-    where.push("eye_color = ?");
-    args.push(eye_color.trim());
-  }
-  if (lang && lang.trim()) {
-    where.push("languages LIKE ?");
-    args.push(`%${lang.trim()}%`);
-  }
+    if (q && q.trim()) {
+        whereClauses.push(`full_name ILIKE $${paramIndex++}`);
+        queryParams.push(`%${q.trim()}%`);
+    }
+    if (sex && sex.trim()) {
+        whereClauses.push(`sex = $${paramIndex++}`);
+        queryParams.push(sex.trim());
+    }
+    if (city && city.trim()) {
+        whereClauses.push(`cities ILIKE $${paramIndex++}`);
+        queryParams.push(`%${city.trim()}%`);
+    }
+    if (look_type && look_type.trim()) {
+        whereClauses.push(`look_type = $${paramIndex++}`);
+        queryParams.push(look_type.trim());
+    }
+    if (body_type && body_type.trim()) {
+        whereClauses.push(`body_type = $${paramIndex++}`);
+        queryParams.push(body_type.trim());
+    }
+    if (hair_color && hair_color.trim()) {
+        whereClauses.push(`hair_color = $${paramIndex++}`);
+        queryParams.push(hair_color.trim());
+    }
+    if (eye_color && eye_color.trim()) {
+        whereClauses.push(`eye_color = $${paramIndex++}`);
+        queryParams.push(eye_color.trim());
+    }
+    if (lang && lang.trim()) {
+        whereClauses.push(`languages ILIKE $${paramIndex++}`);
+        queryParams.push(`%${lang.trim()}%`);
+    }
+    if (typeof heightMin === "number" && Number.isFinite(heightMin)) {
+        whereClauses.push(`height_cm >= $${paramIndex++}`);
+        queryParams.push(heightMin);
+    }
+    if (typeof heightMax === "number" && Number.isFinite(heightMax)) {
+        whereClauses.push(`height_cm <= $${paramIndex++}`);
+        queryParams.push(heightMax);
+    }
 
-  if (typeof heightMin === "number" && Number.isFinite(heightMin)) {
-    where.push("height_cm >= ?");
-    args.push(heightMin);
-  }
-  if (typeof heightMax === "number" && Number.isFinite(heightMax)) {
-    where.push("height_cm <= ?");
-    args.push(heightMax);
-  }
+    const ageRange = "regexp_split_to_array(age_range, E'\\s*-\\s*')";
+    if (typeof ageFrom === "number" && Number.isFinite(ageFrom)) {
+        whereClauses.push(`CAST(${ageRange}[2] AS INTEGER) >= $${paramIndex++}`);
+        queryParams.push(ageFrom);
+    }
+    if (typeof ageTo === "number" && Number.isFinite(ageTo)) {
+        whereClauses.push(`CAST(${ageRange}[1] AS INTEGER) <= $${paramIndex++}`);
+        queryParams.push(ageTo);
+    }
 
-  // ==== Корректная фильтрация по ИНТЕРВАЛУ age_range ====
-  const AGE = "REPLACE(REPLACE(REPLACE(age_range,' ',''),'–','-'),'—','-')";
-  const AGE_MIN = `CAST(CASE WHEN instr(${AGE}, '-')>0 THEN substr(${AGE}, 1, instr(${AGE}, '-')-1) ELSE ${AGE} END AS INTEGER)`;
-  const AGE_MAX = `CAST(CASE WHEN instr(${AGE}, '-')>0 THEN substr(${AGE}, instr(${AGE}, '-')+1) ELSE ${AGE} END AS INTEGER)`;
+    const qsql = `
+        SELECT user_id, full_name, sex, age_range, look_type, body_type,
+               height_cm, weight_kg, hair_color, hair_type, eye_color,
+               cities, languages, instagram, video_vizitka, showreel, portfolio, projects,
+               skills, updated_at
+        FROM users
+        WHERE ${whereClauses.join(" AND ")}
+        ORDER BY updated_at DESC
+        LIMIT $${paramIndex++} OFFSET $${paramIndex++}`;
 
-  if (typeof ageFrom === "number" && Number.isFinite(ageFrom) &&
-      typeof ageTo === "number" && Number.isFinite(ageTo)) {
-    where.push(`(${AGE_MAX} >= ? AND ${AGE_MIN} <= ?)`);
-    args.push(ageFrom, ageTo);
-  } else if (typeof ageFrom === "number" && Number.isFinite(ageFrom)) {
-    where.push(`${AGE_MAX} >= ?`);
-    args.push(ageFrom);
-  } else if (typeof ageTo === "number" && Number.isFinite(ageTo)) {
-    where.push(`${AGE_MIN} <= ?`);
-    args.push(ageTo);
-  }
-  // ======================================================
+    queryParams.push(limit, offset);
 
-  const qsql = `
-    SELECT user_id, full_name, sex, age_range, look_type, body_type,
-           height_cm, weight_kg, hair_color, hair_type, eye_color,
-           cities, languages, instagram, video_vizitka, showreel, portfolio, projects,
-           skills,                                  -- ← добавлено в SELECT
-           updated_at
-    FROM users
-    WHERE ${where.join(" AND ")}
-    ORDER BY datetime(replace(updated_at,'T',' ')) DESC
-    LIMIT ? OFFSET ?`;
-
-  return db().prepare(qsql).all(...args, limit, offset) as Actor[];
+    return query(qsql, queryParams);
 }
 
 /** Получить актёра по ID */
-export function getActorById(id: number): Actor | undefined {
-  const q = `
-    SELECT user_id, full_name, sex, age_range, look_type, body_type,
-           height_cm, weight_kg, hair_color, hair_type, eye_color,
-           cities, languages, instagram, video_vizitka, showreel, portfolio, projects,
-           skills,                                  -- ← добавлено в SELECT
-           updated_at
-    FROM users WHERE user_id = ?`;
-  return db().prepare(q).get(id) as Actor | undefined;
+export async function getActorById(id: number): Promise<Actor | undefined> {
+    const q = `
+        SELECT user_id, full_name, sex, age_range, look_type, body_type,
+               height_cm, weight_kg, hair_color, hair_type, eye_color,
+               cities, languages, instagram, video_vizitka, showreel, portfolio, projects,
+               skills, updated_at
+        FROM users WHERE user_id = $1`;
+    const rows = await query(q, [id]);
+    return rows[0];
 }
 
 /** серверный helper для URL фотографии через API-роут */

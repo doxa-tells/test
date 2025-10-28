@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 import os
 import json
-import sqlite3
+import psycopg2
+from psycopg2.extras import RealDictCursor
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Iterable
 from datetime import datetime
@@ -13,25 +14,24 @@ except Exception:
     OpenAI = None
 
 
-# ---------- пути ----------
-def project_root() -> Path:
-    return Path(__file__).resolve().parents[1]
-
-def db_path() -> Path:
-    return project_root() / "data" / "actors.db"
-
-
-# ---------- внутренняя утилита: безопасно открыть БД ----------
+# ---------- PostgreSQL connection ----------
 def _connect():
-    path = db_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    con = sqlite3.connect(str(path))
-    con.row_factory = sqlite3.Row
-    return con
-
+    """Connects to the PostgreSQL database using environment variables."""
+    try:
+        conn = psycopg2.connect(
+            dbname=os.getenv("PG_DB"),
+            user=os.getenv("PG_USER"),
+            password=os.getenv("PG_PASSWORD"),
+            host=os.getenv("PG_HOST"),
+            port=os.getenv("PG_PORT")
+        )
+        return conn
+    except psycopg2.OperationalError as e:
+        print(f"❌ Could not connect to PostgreSQL database: {e}")
+        raise
 
 # ---------- users ----------
-def _row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
+def _row_to_dict(row: dict) -> Dict[str, Any]:
     d = dict(row)
     for k in ("height_cm", "weight_kg"):
         if d.get(k) in (None, "", "None"):
@@ -44,17 +44,16 @@ def _row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
     return d
 
 def get_all_users() -> List[Dict[str, Any]]:
-    path = db_path()
-    if not path.exists():
-        print("⚠️  actors.db не найден.")
-        return []
     con = _connect()
-    cur = con.cursor()
-    try:
-        cur.execute("SELECT * FROM users ORDER BY updated_at DESC")
-    except Exception:
-        cur.execute("SELECT * FROM users")
-    rows = cur.fetchall()
+    with con.cursor(cursor_factory=RealDictCursor) as cur:
+        try:
+            cur.execute("SELECT * FROM users ORDER BY updated_at DESC")
+            rows = cur.fetchall()
+        except psycopg2.Error as e:
+            print(f"DB error in get_all_users: {e}")
+            # Fallback for safety, though the first query should be fine if table exists
+            cur.execute("SELECT * FROM users")
+            rows = cur.fetchall()
     con.close()
     return [_row_to_dict(r) for r in rows]
 
@@ -108,6 +107,9 @@ def build_match_prompt(profile: Dict[str, Any], casting_text: str) -> str:
         f"Телосложение: {body_type}\n"
         f"Рост: {height_cm}\n"
         f"Вес: {weight_kg}\n"
+        f"Цвет волос: {hair_color}\n"
+        f"Тип волос: {hair_type}\n"
+        f"Цвет глаз: {eye_color}\n"
         f"Языки: {languages}\n\n"
         f"=== КАСТИНГ ===\n{casting_text}\n\n"
         "Ответ: "
@@ -157,25 +159,24 @@ def check_match_ai(profile: Dict[str, Any], casting_text: str, *, debug: bool = 
 
 
 # ---------- MATCHES ----------
-def _ensure_matches_table(cur: sqlite3.Cursor):
+def _ensure_matches_table(cur):
     """Создаём таблицу matches, если её ещё нет (на случай запуска мэтчера без user_reg_bot)."""
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS matches (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             user_id INTEGER NOT NULL,
-            source_chat INTEGER,
+            source_chat BIGINT,
             thread_id INTEGER,
-            message_ids TEXT,
+            message_ids JSONB,
             text_cache TEXT,
-            created_at TEXT NOT NULL
+            created_at TIMESTAMPTZ NOT NULL
         )
         """
     )
     # индекс для быстрых выборок
     cur.execute(
-        "CREATE INDEX IF NOT EXISTS idx_matches_user_created "
-        "ON matches(user_id, created_at DESC)"
+        "CREATE INDEX IF NOT EXISTS idx_matches_user_created ON matches(user_id, created_at DESC)"
     )
 
 def store_match(
@@ -200,7 +201,8 @@ def store_match(
     cur.execute(
         """
         INSERT INTO matches (user_id, source_chat, thread_id, message_ids, text_cache, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+        VALUES (%s, %s, %s, %s, %s, %s)
+        RETURNING id;
         """,
         (
             int(user_id),
@@ -211,7 +213,7 @@ def store_match(
             now,
         ),
     )
-    match_id = cur.lastrowid
+    match_id = cur.fetchone()[0]
     con.commit()
     con.close()
     return match_id
@@ -222,10 +224,10 @@ def purge_old_matches(days: int = 7) -> int:
     cur = con.cursor()
     _ensure_matches_table(cur)
     cur.execute(
-        "DELETE FROM matches WHERE datetime(created_at) < datetime('now', ?)",
-        (f"-{int(days)} days",),
+        "DELETE FROM matches WHERE created_at < NOW() - INTERVAL '%s days'",
+        (int(days),),
     )
-    deleted = cur.rowcount or 0
+    deleted = cur.rowcount
     con.commit()
     con.close()
     return deleted
@@ -238,11 +240,11 @@ def get_user_matches(uid: int, limit: int = 50) -> List[Dict[str, Any]]:
     cur = con.cursor()
     _ensure_matches_table(cur)
     # подчистим просроченные
-    cur.execute("DELETE FROM matches WHERE datetime(created_at) < datetime('now','-7 days')")
+    cur.execute("DELETE FROM matches WHERE created_at < NOW() - INTERVAL '7 days'")
     con.commit()
 
     cur.execute(
-        "SELECT * FROM matches WHERE user_id=? ORDER BY datetime(created_at) DESC, id DESC LIMIT ?",
+        "SELECT * FROM matches WHERE user_id=%s ORDER BY created_at DESC, id DESC LIMIT %s",
         (int(uid), int(limit)),
     )
     rows = [dict(r) for r in cur.fetchall()]
@@ -259,43 +261,28 @@ def get_user_matches(uid: int, limit: int = 50) -> List[Dict[str, Any]]:
 
 
 # ---------- NOTICES (уведомления "Смотреть кастинги") ----------
-def _ensure_notices_table(cur: sqlite3.Cursor):
+def _ensure_notices_table(cur):
     cur.execute(
         """
-        CREATE TABLE IF NOT EXISTS notices
-        (
-            id
-            INTEGER
-            PRIMARY
-            KEY
-            AUTOINCREMENT,
-            user_id
-            INTEGER
-            NOT
-            NULL,
-            msg_id
-            INTEGER
-            NOT
-            NULL,
-            created_at
-            TEXT
-            NOT
-            NULL
+        CREATE TABLE IF NOT EXISTS notices (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            msg_id INTEGER NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
         """
     )
     cur.execute("CREATE INDEX IF NOT EXISTS idx_notices_user ON notices(user_id)")
 
-
 def store_notice(user_id: int, msg_id: int) -> None:
-    con = _connect();
-    cur = con.cursor()
-    _ensure_notices_table(cur)
-    cur.execute(
-        "INSERT INTO notices (user_id, msg_id, created_at) VALUES (?, ?, datetime('now'))",
-        (int(user_id), int(msg_id)),
-    )
-    con.commit();
+    con = _connect()
+    with con.cursor() as cur:
+        _ensure_notices_table(cur)
+        cur.execute(
+            "INSERT INTO notices (user_id, msg_id, created_at) VALUES (%s, %s, NOW())",
+            (int(user_id), int(msg_id)),
+        )
+    con.commit()
     con.close()
 
 def fetch_and_clear_notices(user_id: int, except_id: Optional[int] = None) -> list[int]:
@@ -304,14 +291,14 @@ def fetch_and_clear_notices(user_id: int, except_id: Optional[int] = None) -> li
     except_id — можно передать id, который уже удалили вручную (по клику), его вернём,
     но удалять не будем — чтобы не ловить лишние ошибки.
     """
-    con = _connect();
-    cur = con.cursor()
-    _ensure_notices_table(cur)
-    cur.execute("SELECT msg_id FROM notices WHERE user_id=?", (int(user_id),))
-    ids = [r[0] for r in cur.fetchall()]
-    if ids:
-        cur.execute("DELETE FROM notices WHERE user_id=?", (int(user_id),))
-        con.commit()
+    con = _connect()
+    with con.cursor() as cur:
+        _ensure_notices_table(cur)
+        cur.execute("SELECT msg_id FROM notices WHERE user_id=%s", (int(user_id),))
+        ids = [r[0] for r in cur.fetchall()]
+        if ids:
+            cur.execute("DELETE FROM notices WHERE user_id=%s", (int(user_id),))
+            con.commit()
     con.close()
     # если надо — исключим один id
     if except_id is not None:

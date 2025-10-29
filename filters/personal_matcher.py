@@ -76,15 +76,16 @@ def _prefs(uid: int) -> set:
 
 def is_sub_active(uid: int) -> bool:
     con = _db()
-    with con.cursor() as cur:
-        try:
-            cur.execute("SELECT status FROM subs WHERE user_id=%s", (uid,))
-            row = cur.fetchone()
-            return bool(row and (row[0] == "active"))
-        except psycopg2.Error:
-            # если таблицы нет — считаем неподписчиком
-            return False
-    con.close()
+    try:
+        with con.cursor() as cur:
+            try:
+                cur.execute("SELECT status FROM subs WHERE user_id=%s", (uid,))
+                row = cur.fetchone()
+                return bool(row and (row[0] == "active"))
+            except psycopg2.Error:
+                return False
+    finally:
+        con.close()
 
 def _init_weekly_table():
     con = _db()

@@ -913,9 +913,6 @@ async def render_menu(chat_id: int, uid: int):
     extra_rows = []
     if active and ((await a_get_sub_plan(uid)) == "premium"):
         extra_rows.append([Button.inline("🎯 Категории (premium)", b"catpick_open")])
-    # кнопка отмены подписки для любого активного плана
-    if active:
-        extra_rows.append([Button.inline("❌ Отменить подписку", b"cancel_sub_open")])
 
     await render_text(
         uid, chat_id, WELCOME,
@@ -1626,52 +1623,17 @@ async def on_catpick_toggle(ev: events.CallbackQuery.Event):
 
 @client.on(events.CallbackQuery(pattern=b"^cancel_sub_open$"))
 async def on_cancel_sub_open(ev: events.CallbackQuery.Event):
-    uid = ev.sender_id
-    if not (await a_is_sub_active(uid)):
-        await ev.answer("Подписка уже неактивна", alert=True)
-        return
-    text = (
-        "❓ Вы уверены, что хотите отменить подписку?\n\n"
-        "Доступ к рассылкам будет остановлен сразу."
-    )
-    btns = [
-        [Button.inline("✅ Да, отменить", b"cancel_sub_confirm")],
-        [Button.inline("⬅️ Назад", b"home")],
-    ]
-    await render_text(uid, ev.chat_id, text, buttons=btns)
+    try:
+        await ev.answer()
+    except Exception:
+        pass
 
 @client.on(events.CallbackQuery(pattern=b"^cancel_sub_confirm$"))
 async def on_cancel_sub_confirm(ev: events.CallbackQuery.Event):
-    uid = ev.sender_id
-    # 1) Попробовать отменить в TipTopPay через наш вебхук (если запущен и настроен)
     try:
-        url = f"{TTP_WEBHOOK_BASE}/api/tiptoppay/subscriptions/cancel-by-account"
-        payload = {"accountId": str(uid)}
-        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
-            await session.post(url, json=payload)
+        await ev.answer()
     except Exception:
         pass
-    # 2) Локально деактивируем подписку и очищаем премиум-признак/срок/категории
-    try:
-        pool = await _ensure_pg_pool()
-        async with pool.acquire() as con:
-            async with con.transaction():
-                await con.execute(
-                    """
-                    UPDATE subs
-                    SET status='inactive', plan=NULL, valid_until=NULL, updated_at=NOW()
-                    WHERE user_id=$1
-                    """,
-                    int(uid)
-                )
-                await con.execute("DELETE FROM user_category_prefs WHERE user_id=$1", int(uid))
-        await ev.answer("Подписка отменена", alert=False)
-    except Exception:
-        await ev.answer("Ошибка при отмене", alert=True)
-        return
-    # вернёмся в главное меню
-    STATE.setdefault(uid, {})["screen_id"] = None
-    await render_menu(ev.chat_id, uid)
 
 # ------- CONSENT handlers ---------------------------------------------------
 # добавь это рядом с остальными хэндлерами

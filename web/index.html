@@ -228,7 +228,7 @@
           </div>
 
           <div class="hero-art reveal" aria-hidden="true">
-            <img src="/casting.png?v=3" alt="Иллюстрация ИИ-кастинг агента">
+            <img src="casting.png" alt="Иллюстрация ИИ-кастинг агента">
           </div>
 
           <div class="cta">
@@ -280,12 +280,26 @@
           <h3 style="margin-top:0">Тариф: <span style="color: var(--halo)">Профессионал</span></h3>
           <div class="priceRow">
             <div class="price">30&nbsp;₸/месяц</div>
+            <div class="after">далее&nbsp;4&nbsp;490&nbsp;₸/мес</div>
+          </div>
+          <div class="bullet"><span>✅</span><span class="t">Умная фильтрация из 20+ WA/TG-источников — с приоритетом под ваши цели</span></div>
+          <div class="bullet"><span>✅</span><span class="t">Персональная лента по выбранным категориям — больше релевантных кастингов</span></div>
+          <div class="bullet"><span>✅</span><span class="t">Мгновенные уведомления без спама и дублей</span></div>
+          <div class="bullet"><span>✅</span><span class="t">Отклик в 1 клик и сохранённая история заявок</span></div>
+          <div class="note" style="margin-top:10px"><b>Премиум</b> — максимум релевантности и скорости. Пробный месяц 30 ₸.</div>
+          <div class="cta"><a class="btn" href="#" id="payBtnPremium">Подключить Премиум</a></div>
+        </div>
+
+        <div class="pricingCard reveal">
+          <h3 style="margin-top:0">Тариф: <span style="color: var(--halo)">Стандарт</span></h3>
+          <div class="priceRow">
+            <div class="price">30&nbsp;₸/месяц</div>
             <div class="after">далее&nbsp;3&nbsp;490&nbsp;₸/мес</div>
           </div>
-          <div class="bullet"><span>✅</span><span class="t">Фильтрация только подходящих кастингов из 20+ WhatsApp/Telegram</span></div>
-          <div class="bullet"><span>✅</span><span class="t">Уведомления о подходящих кастингах без спама и дублей</span></div>
-          <div class="bullet"><span>✅</span><span class="t">Возможность отклика в 1 клик, сохранённая история</span></div>
-          <div class="note"><b>Начни с пробного месяца за 30 ₸</b> — один съёмочный день уже окупит подписку</div>
+          <div class="bullet"><span>✅</span><span class="t">Все топ-кастинги РК в едином удобном шаблоне</span></div>
+          <div class="bullet"><span>✅</span><span class="t">Фильтрация по профилю — без спама и дублей</span></div>
+          <div class="bullet"><span>✅</span><span class="t">Мгновенные уведомления и отклик в 1 клик</span></div>
+          <div class="note"><b>Старт за 30 ₸</b> — один съёмочный день окупит подписку.</div>
           <div class="cta"><a class="btn" href="#" id="payBtn">Подключить к Telegram</a></div>
         </div>
       </div>
@@ -407,8 +421,9 @@
     const TIPTOP_SITE_ID   = "8192011"; // не обязателен – кладём в metadata
 
     const CURRENCY  = "KZT";
-    const AMOUNT_TRIAL   = 30;     // первый месяц
-    const AMOUNT_MONTHLY = 3490;  // далее
+    const AMOUNT_TRIAL   = 30;      // первый месяц (для всех планов)
+    const AMOUNT_MONTHLY_PRO = 3490;   // Профессионал
+    const AMOUNT_MONTHLY_PREMIUM = 4490; // Премиум
 
     const API_SIGN = "/api/sign"; // вариант B: сервер отдаёт ts/sig для deep-link
     const API_SUB_CREATE = "/api/tiptoppay/subscriptions/create";
@@ -442,7 +457,7 @@
       return gen;
     }
 
-    async function startSubscription() {
+    async function startSubscription(plan = "pro", categories = []) {
       if (!window.tiptop || typeof window.tiptop.Widget !== "function") {
         console.error("TipTopPay: widget factory not found.", Object.keys(window));
         alert("Платёжный виджет не загрузился. Отключите блокировщики и обновите страницу.");
@@ -471,15 +486,19 @@
 
       const widget = new window.tiptop.Widget();
 
+      const isPremium = String(plan).toLowerCase() === "premium";
+      const amountMonthly = isPremium ? AMOUNT_MONTHLY_PREMIUM : AMOUNT_MONTHLY_PRO;
+      const planTitle = isPremium ? "Премиум" : "Профессионал";
+
       const params = {
         publicTerminalId: TIPTOP_PUBLIC_ID,
         paymentSchema: "Single",
         amount: AMOUNT_TRIAL,
         currency: CURRENCY,
-        description: `Roletapp AI — подписка (первый месяц ${AMOUNT_TRIAL} ₸, далее ${AMOUNT_MONTHLY} ₸/мес)`,
+        description: `Roletapp AI — ${planTitle} (первый месяц ${AMOUNT_TRIAL} ₸, далее ${amountMonthly} ₸/мес)`,
         userInfo: { accountId: uid }, // плательщик = Telegram ID
         recurrent: { interval: "Month", period: 1 },
-        metadata: { tg_uid: uid, site_id: TIPTOP_SITE_ID, source: "webapp", ts, sig },
+        metadata: { tg_uid: uid, site_id: TIPTOP_SITE_ID, source: "webapp", plan: planTitle, categories, ts, sig },
         // вариант B: прокидываем uid/ts/sig в redirect, чтобы "thank-you" могла построить deep-link
         successRedirectUrl: `${WEBAPP_URL}thank-you?uid=${encodeURIComponent(uid)}${ts?`&ts=${encodeURIComponent(ts)}&sig=${encodeURIComponent(sig)}`:""}`,
         failRedirectUrl: WEBAPP_URL + "payment-fail"
@@ -498,9 +517,9 @@
           const payload = {
             token: String(token),
             accountId: uid,
-            description: "Ежемесячная подписка на Roletapp AI",
+            description: `Ежемесячная подписка на Roletapp AI — ${planTitle}`,
             email: undefined,
-            amount: AMOUNT_MONTHLY,
+            amount: amountMonthly,
             Currency: CURRENCY,
             requireConfirmation: false,
             startDate: startIso,
@@ -513,6 +532,7 @@
             const subId = j?.Model?.Id || j?.model?.id || j?.Id;
             if (subId) {
               localStorage.setItem("ttp_subscription_id", String(subId));
+              try { if (Array.isArray(categories)) localStorage.setItem("roletapp_premium_categories", JSON.stringify(categories)); } catch(e) {}
             }
           } catch (e) { console.warn("Sub create failed", e); }
         }
@@ -524,7 +544,12 @@
 
     document.getElementById("payBtn")?.addEventListener("click", function (e) {
       e.preventDefault();
-      startSubscription();
+      startSubscription("pro");
+    });
+
+    document.getElementById("payBtnPremium")?.addEventListener("click", function (e) {
+      e.preventDefault();
+      startSubscription("premium", []);
     });
 
     // Отмена подписки: сначала пробуем по accountId одним вызовом

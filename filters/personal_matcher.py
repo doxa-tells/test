@@ -2,6 +2,7 @@
 
 import os
 import json
+import traceback
 from typing import Optional, List, Tuple
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -133,10 +134,13 @@ def fetch_counts_for_current_week() -> List[Tuple[int, int]]:
     _init_weekly_table()
     ws = _week_start_str()
     con = _db()
-    with con.cursor() as cur:
-        cur.execute("SELECT user_id, cnt FROM weekly_stats WHERE week_start=%s", (ws,))
-        return [(int(r[0]), int(r[1])) for r in cur.fetchall()]
-    con.close()
+    try:
+        with con.cursor() as cur:
+            cur.execute("SELECT user_id, cnt FROM weekly_stats WHERE week_start=%s", (ws,))
+            rows = [(int(r[0]), int(r[1])) for r in cur.fetchall()]
+        return rows
+    finally:
+        con.close()
 
 def reset_current_week_counts():
     ws = _week_start_str()
@@ -201,144 +205,158 @@ async def _save_and_notify(user_id: int, source_chat: int, message_ids, text_cac
 
 @client.on(events.NewMessage(chats=[TARGET_CHAT_ID]))
 async def handle_new_casting(event):
-    msg = event.message
-    topic_id = get_topic_id(msg)
+    try:
+        msg = event.message
+        topic_id = get_topic_id(msg)
 
-    print("\n================= 📥 NewMessage =================")
-    print(f"chat_id={event.chat_id}, topic_id={topic_id}, msg_id={msg.id}")
+        print("\n================= 📥 NewMessage =================")
+        print(f"chat_id={event.chat_id}, topic_id={topic_id}, msg_id={msg.id}")
 
-    if topic_id != TARGET_THREAD_ID:
-        print("❌ Не та ветка — пропуск.")
-        return
+        if topic_id != TARGET_THREAD_ID:
+            print("❌ Не та ветка — пропуск.")
+            return
 
-    casting_text = (event.raw_text or "").strip()
-    if not casting_text:
-        print("⚠️ Пустой текст — пропуск.")
-        return
+        casting_text = (event.raw_text or "").strip()
+        if not casting_text:
+            print("⚠️ Пустой текст — пропуск.")
+            return
 
-    removed = purge_old_matches()
-    if removed:
-        print(f"🧹 purge_old_matches: удалено {removed} строк")
+        removed = purge_old_matches()
+        if removed:
+            print(f"🧹 purge_old_matches: удалено {removed} строк")
 
-    users = get_all_users()
-    if not users:
-        print("⚠️ В базе нет пользователей.")
-        return
+        users = get_all_users()
+        if not users:
+            print("⚠️ В базе нет пользователей.")
+            return
 
-    _log_users(users)
+        _log_users(users)
 
-    cats = get_or_compute_categories(event.chat_id, msg.id, topic_id, casting_text, None)
+        try:
+            cats = get_or_compute_categories(event.chat_id, msg.id, topic_id, casting_text, None) or set()
+        except Exception as e:
+            print(f"⚠️ categories error: {e}\n{traceback.format_exc()}")
+            cats = set()
 
-    matched_any = False
-    premium_with_prefs = []
-    premium_no_prefs = []
-    basic = []
-    for u in users:
-        uid = int(u.get("user_id"))
-        plan, status = _sub_info(uid)
-        if status != "active":
-            continue
-        if plan == "premium":
-            pf = _prefs(uid)
-            if pf and (pf.intersection(cats)):
-                premium_with_prefs.append(u)
-            else:
-                premium_no_prefs.append(u)
-        elif plan == "basic":
-            basic.append(u)
-
-    for cohort in (premium_with_prefs, premium_no_prefs, basic):
-        for u in cohort:
-            user_id = u["user_id"]
-            print(f"\n--- 🔎 Проверка user_id={user_id} ---")
-            ok = check_match_ai(u, casting_text, debug=True)
-            if not ok:
-                print("⛔️ Не подходит (ИИ).")
+        matched_any = False
+        premium_with_prefs = []
+        premium_no_prefs = []
+        basic = []
+        for u in users:
+            uid = int(u.get("user_id"))
+            plan, status = _sub_info(uid)
+            if status != "active":
                 continue
-            matched_any = True
-            try:
-                await _save_and_notify(
-                    user_id=user_id,
-                    source_chat=event.chat_id,
-                    message_ids=[msg.id],
-                    text_cache=casting_text,
-                    thread_id=topic_id or None,
-                )
-            except Exception as e:
-                print(f"⚠️ Ошибка save/notify user_id={user_id}: {e}")
+            if plan == "premium":
+                pf = _prefs(uid)
+                if pf and (pf.intersection(cats)):
+                    premium_with_prefs.append(u)
+                else:
+                    premium_no_prefs.append(u)
+            elif plan == "basic":
+                basic.append(u)
 
-    print("🔕 Никому не подошло." if not matched_any else "✅ Готово для одиночного поста.")
+        for cohort in (premium_with_prefs, premium_no_prefs, basic):
+            for u in cohort:
+                user_id = u["user_id"]
+                print(f"\n--- 🔎 Проверка user_id={user_id} ---")
+                ok = check_match_ai(u, casting_text, debug=True)
+                if not ok:
+                    print("⛔️ Не подходит (ИИ).")
+                    continue
+                matched_any = True
+                try:
+                    await _save_and_notify(
+                        user_id=user_id,
+                        source_chat=event.chat_id,
+                        message_ids=[msg.id],
+                        text_cache=casting_text,
+                        thread_id=topic_id or None,
+                    )
+                except Exception as e:
+                    print(f"⚠️ Ошибка save/notify user_id={user_id}: {e}")
+
+        print("🔕 Никому не подошло." if not matched_any else "✅ Готово для одиночного поста.")
+    except Exception as e:
+        print(f"🔥 Handler error (NewMessage): {e}\n{traceback.format_exc()}")
 
 @client.on(events.Album(chats=[TARGET_CHAT_ID]))
 async def handle_album(event):
-    msg0 = event.messages[0]
-    topic_id = get_topic_id(msg0)
+    try:
+        msg0 = event.messages[0]
+        topic_id = get_topic_id(msg0)
 
-    print("\n================= 🎞 NewAlbum =================")
-    print(f"chat_id={event.chat_id}, topic_id={topic_id}, msg_ids={[m.id for m in event.messages]}")
+        print("\n================= 🎞 NewAlbum =================")
+        print(f"chat_id={event.chat_id}, topic_id={topic_id}, msg_ids={[m.id for m in event.messages]}")
 
-    if topic_id != TARGET_THREAD_ID:
-        print("❌ Не та ветка — пропуск.")
-        return
+        if topic_id != TARGET_THREAD_ID:
+            print("❌ Не та ветка — пропуск.")
+            return
 
-    casting_text = (msg0.raw_text or "").strip()
-    if not casting_text:
-        print("⚠️ Пустой текст — пропуск.")
-        return
+        casting_text = (msg0.raw_text or "").strip()
+        if not casting_text:
+            print("⚠️ Пустой текст — пропуск.")
+            return
 
-    removed = purge_old_matches()
-    if removed:
-        print(f"🧹 purge_old_matches: удалено {removed} строк")
+        removed = purge_old_matches()
+        if removed:
+            print(f"🧹 purge_old_matches: удалено {removed} строк")
 
-    users = get_all_users()
-    if not users:
-        print("⚠️ В базе нет пользователей.")
-        return
+        users = get_all_users()
+        if not users:
+            print("⚠️ В базе нет пользователей.")
+            return
 
-    _log_users(users)
+        _log_users(users)
 
-    matched_any = False
-    album_ids = [m.id for m in event.messages]
-    cats = get_or_compute_categories(event.chat_id, album_ids[0], topic_id, casting_text, None)
+        matched_any = False
+        album_ids = [m.id for m in event.messages]
+        try:
+            cats = get_or_compute_categories(event.chat_id, album_ids[0], topic_id, casting_text, None) or set()
+        except Exception as e:
+            print(f"⚠️ categories error (album): {e}\n{traceback.format_exc()}")
+            cats = set()
 
-    premium_with_prefs = []
-    premium_no_prefs = []
-    basic = []
-    for u in users:
-        uid = int(u.get("user_id"))
-        plan, status = _sub_info(uid)
-        if status != "active":
-            continue
-        if plan == "premium":
-            pf = _prefs(uid)
-            if pf and (pf.intersection(cats)):
-                premium_with_prefs.append(u)
-            else:
-                premium_no_prefs.append(u)
-        elif plan == "basic":
-            basic.append(u)
-
-    for cohort in (premium_with_prefs, premium_no_prefs, basic):
-        for u in cohort:
-            user_id = u["user_id"]
-            print(f"\n--- 🔎 Проверка (альбом) user_id={user_id} ---")
-            ok = check_match_ai(u, casting_text, debug=True)
-            if not ok:
-                print("⛔️ Не подходит (ИИ).")
+        premium_with_prefs = []
+        premium_no_prefs = []
+        basic = []
+        for u in users:
+            uid = int(u.get("user_id"))
+            plan, status = _sub_info(uid)
+            if status != "active":
                 continue
-            matched_any = True
-            try:
-                await _save_and_notify(
-                    user_id=user_id,
-                    source_chat=event.chat_id,
-                    message_ids=album_ids,
-                    text_cache=casting_text,
-                    thread_id=topic_id or None,
-                )
-            except Exception as e:
-                print(f"⚠️ Ошибка save/notify user_id={user_id}: {e}")
+            if plan == "premium":
+                pf = _prefs(uid)
+                if pf and (pf.intersection(cats)):
+                    premium_with_prefs.append(u)
+                else:
+                    premium_no_prefs.append(u)
+            elif plan == "basic":
+                basic.append(u)
 
-    print("🔕 Никому не подошло (альбом)." if not matched_any else "✅ Готово для альбома.")
+        for cohort in (premium_with_prefs, premium_no_prefs, basic):
+            for u in cohort:
+                user_id = u["user_id"]
+                print(f"\n--- 🔎 Проверка (альбом) user_id={user_id} ---")
+                ok = check_match_ai(u, casting_text, debug=True)
+                if not ok:
+                    print("⛔️ Не подходит (ИИ).")
+                    continue
+                matched_any = True
+                try:
+                    await _save_and_notify(
+                        user_id=user_id,
+                        source_chat=event.chat_id,
+                        message_ids=album_ids,
+                        text_cache=casting_text,
+                        thread_id=topic_id or None,
+                    )
+                except Exception as e:
+                    print(f"⚠️ Ошибка save/notify user_id={user_id}: {e}")
+
+        print("🔕 Никому не подошло (альбом)." if not matched_any else "✅ Готово для альбома.")
+    except Exception as e:
+        print(f"🔥 Handler error (Album): {e}\n{traceback.format_exc()}")
 
 # ── Недельный дайджест (ручной триггер) ─────────────────────────────────────
 

@@ -725,7 +725,6 @@ async def botapi_send_message(chat_id: int, text: str, reply_markup: dict) -> Op
     payload = {
         "chat_id": chat_id,
         "text": text,
-        "parse_mode": "Markdown",
         "disable_web_page_preview": True,
         "reply_markup": reply_markup,
     }
@@ -766,7 +765,6 @@ async def botapi_copy_message(chat_id: int, from_chat_id: int, message_id: int,
         "from_chat_id": from_chat_id,
         "message_id": message_id,
         "caption": caption,
-        "parse_mode": "Markdown",
         "disable_web_page_preview": True,
         "reply_markup": reply_markup,
     }

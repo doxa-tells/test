@@ -2,11 +2,28 @@
 # Запуск: uvicorn tiptoppay_webhook:app --host 0.0.0.0 --port 8000
 
 import os, hmac, hashlib, base64, json, psycopg2
+from pathlib import Path
+from dotenv import load_dotenv
 from psycopg2.extras import RealDictCursor
 from datetime import datetime, timedelta
 from fastapi import FastAPI, Request, Header
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+
+"""
+Ensure .env is loaded so TIPTOP_API_* variables are available when running via uvicorn.
+We try project root and current directory as candidates.
+"""
+try:
+    here = Path(__file__).resolve()
+    for p in [here.parents[1] / ".env", here.parent / ".env"]:
+        if p.exists():
+            load_dotenv(dotenv_path=p)
+            break
+    else:
+        load_dotenv()
+except Exception:
+    load_dotenv()
 
 WEBAPP_SIGNING_SECRET = os.getenv("WEBAPP_SIGNING_SECRET", "")  # тот же секрет, что и у бота
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "https://roletapp.kz,http://localhost:5173").split(",")

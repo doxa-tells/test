@@ -267,6 +267,7 @@ TIPTOP_API_BASE = os.getenv("TIPTOP_API_BASE", "https://api.tiptoppay.kz").rstri
 TIPTOP_API_LOGIN = os.getenv("TIPTOP_API_LOGIN", "")
 TIPTOP_API_AUTH_SCHEME = os.getenv("TIPTOP_API_AUTH_SCHEME", "password").lower()  # password|basic|bearer
 TIPTOP_API_BEARER = os.getenv("TIPTOP_API_BEARER", "")
+TIPTOP_API_PASSWORD_HEADER = os.getenv("TIPTOP_API_PASSWORD_HEADER", "X-API-Password")
 
 # Ленивая импорт-инициализация httpx
 _httpx = None
@@ -288,7 +289,7 @@ def _build_headers() -> dict:
         headers["Authorization"] = f"Bearer {TIPTOP_API_BEARER}"
     elif TIPTOP_API_PASSWORD:
         # Часто TipTopPay принимает пароль терминала через X-API-Password или аналог
-        headers["X-API-Password"] = TIPTOP_API_PASSWORD
+        headers[TIPTOP_API_PASSWORD_HEADER] = TIPTOP_API_PASSWORD
     return headers
 
 async def _ttp_post(path: str, payload: dict) -> tuple[int, dict]:
@@ -301,11 +302,23 @@ async def _ttp_post(path: str, payload: dict) -> tuple[int, dict]:
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             r = await client.post(url, json=payload, headers=headers, auth=auth)
-            data = {}
             try:
                 data = r.json()
             except Exception:
                 data = {"raw": r.text}
+            # Нешумная диагностика без секретов
+            try:
+                print("[ttp_post]", {
+                    "path": path,
+                    "status": r.status_code,
+                    "auth_scheme": TIPTOP_API_AUTH_SCHEME,
+                    "has_login": bool(TIPTOP_API_LOGIN),
+                    "has_password": bool(TIPTOP_API_PASSWORD),
+                    "has_bearer": bool(TIPTOP_API_BEARER),
+                    "pwd_header": TIPTOP_API_PASSWORD_HEADER if TIPTOP_API_AUTH_SCHEME=="password" else None,
+                })
+            except Exception:
+                pass
             return r.status_code, data
     except Exception as e:
         return 0, {"success": False, "message": str(e)}

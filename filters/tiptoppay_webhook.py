@@ -96,6 +96,21 @@ def set_sub_status(uid: str, status: str):
         )
     con.commit(); con.close()
 
+def clear_sub(uid: str):
+    """Sets subscription to inactive and clears plan/valid_until to avoid free access."""
+    con = _db_connect()
+    with con.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO subs(user_id, status, plan, valid_until, updated_at)
+            VALUES (%s, 'inactive', NULL, NULL, %s)
+            ON CONFLICT (user_id)
+            DO UPDATE SET status='inactive', plan=NULL, valid_until=NULL, updated_at=EXCLUDED.updated_at;
+            """,
+            (uid, datetime.utcnow()),
+        )
+    con.commit(); con.close()
+
 def upsert_sub(uid: str, *, status: str, plan: str | None, valid_until):
     """Upsert with plan and valid_until if provided."""
     status = "active" if status == "active" else "inactive"
@@ -405,7 +420,7 @@ async def ttp_subscriptions_cancel(request: Request):
                 uid = str((model or {}).get("AccountId") or "").strip()
                 if uid.isdigit():
                     ensure_db()
-                    upsert_sub(uid, status="inactive", plan=None, valid_until=None)
+                    clear_sub(uid)
     except Exception:
         pass
     return JSONResponse(data, status_code=(code or 502))
@@ -443,7 +458,7 @@ async def ttp_subscriptions_cancel_by_account(request: Request):
     try:
         if code_cancel == 200 and isinstance(data_cancel, dict) and (data_cancel.get("Success") is True or data_cancel.get("success") is True):
             ensure_db()
-            set_sub_status(account_id, "inactive")
+            clear_sub(account_id)
     except Exception:
         pass
     return JSONResponse(data_cancel, status_code=(code_cancel or 502))
@@ -514,9 +529,12 @@ async def tiptoppay_webhook(
     # 5) Обновление БД
     if uid and new_status:
         try:
-            plan = _extract_plan(payload)
-            valid_until = _compute_valid_until(payload) if new_status == "active" else None
-            upsert_sub(uid, status=new_status, plan=plan, valid_until=valid_until)
+            if new_status == "active":
+                plan = _extract_plan(payload)
+                valid_until = _compute_valid_until(payload)
+                upsert_sub(uid, status="active", plan=plan, valid_until=valid_until)
+            else:
+                clear_sub(uid)
             try:
                 print(f"[tiptoppay_webhook] upsert_sub uid={uid} -> status={new_status}, plan={plan}, valid_until={valid_until}")
             except Exception:

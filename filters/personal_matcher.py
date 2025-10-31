@@ -247,6 +247,7 @@ async def handle_new_casting(event):
             plan, status = _sub_info(uid)
             if status != "active":
                 continue
+            plan = (plan or "basic").lower()
             if plan == "premium":
                 pf = _prefs(uid)
                 if pf and (pf.intersection(cats)):
@@ -260,7 +261,10 @@ async def handle_new_casting(event):
             for u in cohort:
                 user_id = u["user_id"]
                 print(f"\n--- 🔎 Проверка user_id={user_id} ---")
-                ok = check_match_ai(u, casting_text, debug=True)
+                if cohort is premium_with_prefs:
+                    ok = True
+                else:
+                    ok = check_match_ai(u, casting_text, debug=True)
                 if not ok:
                     print("⛔️ Не подходит (ИИ).")
                     continue
@@ -338,7 +342,10 @@ async def handle_album(event):
             for u in cohort:
                 user_id = u["user_id"]
                 print(f"\n--- 🔎 Проверка (альбом) user_id={user_id} ---")
-                ok = check_match_ai(u, casting_text, debug=True)
+                if cohort is premium_with_prefs:
+                    ok = True
+                else:
+                    ok = check_match_ai(u, casting_text, debug=True)
                 if not ok:
                     print("⛔️ Не подходит (ИИ).")
                     continue

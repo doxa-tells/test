@@ -171,6 +171,30 @@ def _log_users(users):
 
 # ── Сохранение + уведомление/инкремент ──────────────────────────────────────
 
+def _hard_constraints_ok(u: dict, text: str) -> bool:
+    t = (text or "").lower()
+    sex = (u.get("sex") or "").lower()
+    cities_str = (u.get("cities") or "")
+    # gender
+    has_f = any(x in t for x in ["жен", "девоч", "девуш", "женщ"])
+    has_m = any(x in t for x in ["муж", "парен", "юнош", "мальчик"])
+    if has_f and not has_m:
+        if sex not in ("женский", "жен", "female", "f"):
+            return False
+    if has_m and not has_f:
+        if sex not in ("мужской", "муж", "male", "m"):
+            return False
+    # city
+    user_cities = [c.strip().lower() for c in cities_str.split(",") if c.strip()]
+    mentioned_common = [
+        "алматы","астана","шымкент","караганда","павлодар","актобе","усть-каменогорск",
+        "костанай","кокшетау","актау","атырау","талдыкорган","тараз","петропавловск",
+    ]
+    if any(c in t for c in mentioned_common):
+        if user_cities and not any(c in t for c in user_cities):
+            return False
+    return True
+
 async def _save_and_notify(user_id: int, source_chat: int, message_ids, text_cache: str, thread_id: Optional[int]):
     """
     Сохраняем матч. Если пользователь подписан — пушим уведомление.
@@ -264,7 +288,7 @@ async def handle_new_casting(event):
             for u in cohort:
                 user_id = u["user_id"]
                 print(f"\n--- 🔎 Проверка user_id={user_id} ---")
-                ok = True
+                ok = _hard_constraints_ok(u, casting_text)
                 if not ok:
                     print("⛔️ Не подходит (ИИ).")
                     continue
@@ -346,7 +370,7 @@ async def handle_album(event):
             for u in cohort:
                 user_id = u["user_id"]
                 print(f"\n--- 🔎 Проверка (альбом) user_id={user_id} ---")
-                ok = True
+                ok = _hard_constraints_ok(u, casting_text)
                 if not ok:
                     print("⛔️ Не подходит (ИИ).")
                     continue

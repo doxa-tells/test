@@ -241,30 +241,30 @@ async def handle_new_casting(event):
         matched_any = False
         premium_with_prefs = []
         premium_no_prefs = []
-        basic = []
+        standard = []
+        free = []
         for u in users:
             uid = int(u.get("user_id"))
             plan, status = _sub_info(uid)
             if status != "active":
                 continue
-            plan = (plan or "basic").lower()
+            plan = (plan or "free").lower()
             if plan == "premium":
                 pf = _prefs(uid)
                 if pf and (pf.intersection(cats)):
                     premium_with_prefs.append(u)
                 else:
                     premium_no_prefs.append(u)
-            elif plan == "basic":
-                basic.append(u)
+            elif plan == "standard":
+                standard.append(u)
+            else:
+                free.append(u)
 
-        for cohort in (premium_with_prefs, premium_no_prefs, basic):
+        for cohort in (premium_with_prefs, standard):
             for u in cohort:
                 user_id = u["user_id"]
                 print(f"\n--- 🔎 Проверка user_id={user_id} ---")
-                if cohort is premium_with_prefs:
-                    ok = True
-                else:
-                    ok = check_match_ai(u, casting_text, debug=True)
+                ok = True
                 if not ok:
                     print("⛔️ Не подходит (ИИ).")
                     continue
@@ -323,29 +323,30 @@ async def handle_album(event):
 
         premium_with_prefs = []
         premium_no_prefs = []
-        basic = []
+        standard = []
+        free = []
         for u in users:
             uid = int(u.get("user_id"))
             plan, status = _sub_info(uid)
             if status != "active":
                 continue
+            plan = (plan or "free").lower()
             if plan == "premium":
                 pf = _prefs(uid)
                 if pf and (pf.intersection(cats)):
                     premium_with_prefs.append(u)
                 else:
                     premium_no_prefs.append(u)
-            elif plan == "basic":
-                basic.append(u)
+            elif plan == "standard":
+                standard.append(u)
+            else:
+                free.append(u)
 
-        for cohort in (premium_with_prefs, premium_no_prefs, basic):
+        for cohort in (premium_with_prefs, standard):
             for u in cohort:
                 user_id = u["user_id"]
                 print(f"\n--- 🔎 Проверка (альбом) user_id={user_id} ---")
-                if cohort is premium_with_prefs:
-                    ok = True
-                else:
-                    ok = check_match_ai(u, casting_text, debug=True)
+                ok = True
                 if not ok:
                     print("⛔️ Не подходит (ИИ).")
                     continue

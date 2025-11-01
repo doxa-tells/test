@@ -2311,15 +2311,14 @@ async def cast_next(ev: events.CallbackQuery.Event):
         except Exception:
             pass
         if cnt % 15 == 0:
-            await render_text(
-                uid,
-                chat_id,
-                "🔥 Подключите премиум: выберите свои категории и получайте только нужные кастинги быстрее.",
-                buttons=[
-                    [Button.inline("⚡ Подключить ИИ кастинг-агента", b"open_tariff")],
-                    [Button.inline("⬅️ Вернуться к просмотру", b"ad_continue")],
-                ],
-            )
+            url = build_webapp_url(uid)
+            kb = {
+                "inline_keyboard": [
+                    [{ "text": "Подключить премиум можно здесь", "web_app": { "url": url } }],
+                    [{ "text": "⬅️ Вернуться к просмотру", "callback_data": "ad_continue" }]
+                ]
+            }
+            await botapi_send_message(chat_id, "🔥 Подключите премиум: выберите свои категории и получайте только нужные кастинги быстрее.", kb)
             return
 
         # рендер текущего матча
@@ -2373,15 +2372,15 @@ async def cast_prev(ev: events.CallbackQuery.Event):
         except Exception:
             pass
         if cnt % 15 == 0:
-            await render_text(
-                uid,
-                chat_id,
-                "🔥 Подключите премиум: выберите свои категории и получайте только нужные кастинги быстрее.",
-                buttons=[
-                    [Button.url("🚀 Оформить премиум в мини‑аппе", build_webapp_url(uid))],
-                    [Button.inline("⬅️ Вернуться к просмотру", b"view_castings")],
-                ],
-            )
+            url = build_webapp_url(uid)
+            kb = {
+                "inline_keyboard": [
+                    [{ "text": "Подключить премиум можно здесь", "web_app": { "url": url } }],
+                    [{ "text": "⬅️ Вернуться к просмотру", "callback_data": "ad_continue" }]
+                ]
+            }
+            await botapi_send_message(chat_id, "🔥 Подключите премиум: выберите свои категории и получайте только нужные кастинги быстрее.", kb)
+            return
 
         # рендер текущего матча
         match = items[idx]

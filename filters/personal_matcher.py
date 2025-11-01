@@ -195,7 +195,20 @@ def _hard_constraints_ok(u: dict, text: str) -> bool:
             return False
     return True
 
-async def _save_and_notify(user_id: int, source_chat: int, message_ids, text_cache: str, thread_id: Optional[int]):
+def _append_match_log(entry: dict):
+    try:
+        log_path = os.getenv("MATCHER_LOG")
+        if not log_path:
+            base = Path(__file__).resolve().parents[1]
+            log_path = str(base / "logs" / "matcher.log")
+        p = Path(log_path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        with p.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception as _:
+        pass
+
+async def _save_and_notify(user_id: int, source_chat: int, message_ids, text_cache: str, thread_id: Optional[int], cats: Optional[set] = None):
     """
     Сохраняем матч. Если пользователь подписан — пушим уведомление.
     Если нет — только увеличиваем weekly-счётчик.
@@ -224,6 +237,25 @@ async def _save_and_notify(user_id: int, source_chat: int, message_ids, text_cac
     else:
         bump_weekly_counter(user_id, amount=1)
         print(f"🗓 bump weekly counter user_id={user_id} (match_id={match_id})")
+
+    try:
+        plan, status = _sub_info(int(user_id))
+    except Exception:
+        plan, status = (None, None)
+    try:
+        _append_match_log({
+            "ts": datetime.utcnow().isoformat(),
+            "match_id": match_id,
+            "user_id": int(user_id),
+            "source_chat": int(source_chat),
+            "message_ids": list(message_ids) if isinstance(message_ids, (list, tuple)) else message_ids,
+            "thread_id": int(thread_id) if thread_id is not None else None,
+            "plan": (plan or None),
+            "status": (status or None),
+            "cats": sorted(list(cats)) if cats else None,
+        })
+    except Exception:
+        pass
 
 # ── Хэндлеры входящих постов ────────────────────────────────────────────────
 
@@ -300,6 +332,7 @@ async def handle_new_casting(event):
                         message_ids=[msg.id],
                         text_cache=casting_text,
                         thread_id=topic_id or None,
+                        cats=cats,
                     )
                 except Exception as e:
                     print(f"⚠️ Ошибка save/notify user_id={user_id}: {e}")
@@ -382,6 +415,7 @@ async def handle_album(event):
                         message_ids=album_ids,
                         text_cache=casting_text,
                         thread_id=topic_id or None,
+                        cats=cats,
                     )
                 except Exception as e:
                     print(f"⚠️ Ошибка save/notify user_id={user_id}: {e}")

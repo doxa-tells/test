@@ -2316,10 +2316,11 @@ async def cast_next(ev: events.CallbackQuery.Event):
                 chat_id,
                 "🔥 Подключите премиум: выберите свои категории и получайте только нужные кастинги быстрее.",
                 buttons=[
-                    [Button.url("🚀 Оформить премиум в мини‑аппе", build_webapp_url(uid))],
-                    [Button.inline("⬅️ Вернуться к просмотру", b"view_castings")],
+                    [Button.inline("⚡ Подключить ИИ кастинг-агента", b"open_tariff")],
+                    [Button.inline("⬅️ Вернуться к просмотру", b"ad_continue")],
                 ],
             )
+            return
 
         # рендер текущего матча
         match = items[idx]
@@ -2385,6 +2386,37 @@ async def cast_prev(ev: events.CallbackQuery.Event):
         # рендер текущего матча
         match = items[idx]
         await _render_match_view(uid, chat_id, match, pos=idx + 1, total=len(items))
+    finally:
+        st["busy"] = False
+
+@client.on(events.CallbackQuery(data=b"ad_continue"))
+async def ad_continue(ev: events.CallbackQuery.Event):
+    uid = ev.sender_id
+    chat_id = ev.chat_id
+    st = STATE.setdefault(uid, {"screen_id": None})
+
+    # убрать промо-сообщение, из которого пришёл клик
+    try:
+        await ev.delete()
+    except Exception:
+        pass
+
+    if st.get("busy"):
+        return
+    st["busy"] = True
+    try:
+        items = st.get("cast_items") or []
+        if not items:
+            await render_text(
+                uid,
+                chat_id,
+                "Пока подходящих объявлений нет. Как только появятся — я уведомлю!",
+                buttons=[[Button.inline("🏠 Главное меню", b"home")]],
+            )
+            return
+        idx = st.get("cast_idx", 0)
+        idx = max(0, min(idx, len(items) - 1))
+        await _render_match_view(uid, chat_id, items[idx], pos=idx + 1, total=len(items))
     finally:
         st["busy"] = False
 

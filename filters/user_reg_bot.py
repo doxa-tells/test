@@ -2303,6 +2303,24 @@ async def cast_next(ev: events.CallbackQuery.Event):
         idx = (st.get("cast_idx", 0) + 1) % len(items)
         st["cast_idx"] = idx
 
+        # счётчик свайпов и показ рекламы каждые 15 кликов
+        cnt = int(st.get("ad_swipes", 0) or 0) + 1
+        st["ad_swipes"] = cnt
+        try:
+            await _state_update(uid, {"ad_swipes": cnt})
+        except Exception:
+            pass
+        if cnt % 15 == 0:
+            await render_text(
+                uid,
+                chat_id,
+                "🔥 Подключите премиум: выберите свои категории и получайте только нужные кастинги быстрее.",
+                buttons=[
+                    [Button.url("🚀 Оформить премиум в мини‑аппе", build_webapp_url(uid))],
+                    [Button.inline("⬅️ Вернуться к просмотру", b"view_castings")],
+                ],
+            )
+
         # рендер текущего матча
         match = items[idx]
         await _render_match_view(uid, chat_id, match, pos=idx + 1, total=len(items))
@@ -2345,6 +2363,24 @@ async def cast_prev(ev: events.CallbackQuery.Event):
         # шаг назад по кольцу
         idx = (st.get("cast_idx", 0) - 1) % len(items)
         st["cast_idx"] = idx
+
+        # счётчик свайпов и показ рекламы каждые 15 кликов
+        cnt = int(st.get("ad_swipes", 0) or 0) + 1
+        st["ad_swipes"] = cnt
+        try:
+            await _state_update(uid, {"ad_swipes": cnt})
+        except Exception:
+            pass
+        if cnt % 15 == 0:
+            await render_text(
+                uid,
+                chat_id,
+                "🔥 Подключите премиум: выберите свои категории и получайте только нужные кастинги быстрее.",
+                buttons=[
+                    [Button.url("🚀 Оформить премиум в мини‑аппе", build_webapp_url(uid))],
+                    [Button.inline("⬅️ Вернуться к просмотру", b"view_castings")],
+                ],
+            )
 
         # рендер текущего матча
         match = items[idx]

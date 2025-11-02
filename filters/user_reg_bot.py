@@ -65,6 +65,7 @@ WEBAPP_URL = _getenv("WEBAPP_URL", required=True)
 APPLY_WEBAPP_URL = _getenv("APPLY_WEBAPP_URL", required=True)
 WEBAPP_SIGNING_SECRET = _getenv("WEBAPP_SIGNING_SECRET", required=False)
 TTP_WEBHOOK_BASE = os.getenv("TTP_WEBHOOK_BASE", "http://127.0.0.1:8000").rstrip("/")
+UPSALE_WEBAPP_URL = os.getenv("UPSALE_WEBAPP_URL")
 
 # --- asyncpg pool & redis client --------------------------------------------
 PG_DB = os.getenv("PG_DB")
@@ -590,6 +591,20 @@ def build_webapp_url(uid: int) -> str:
     sep = "&" if ("?" in base) else "?"
     return base + sep + up.urlencode(q)
 
+def build_upsell_webapp_url(uid: int, plan: Optional[str]) -> str:
+    base = (UPSALE_WEBAPP_URL or WEBAPP_URL)
+    ts = str(int(time.time()))
+    q: Dict[str, str] = {"uid": str(uid), "ts": ts, "page": "upsell"}
+    if plan:
+        q["plan"] = str(plan)
+    if WEBAPP_SIGNING_SECRET:
+        msg = f"{uid}:{ts}".encode("utf-8")
+        key = WEBAPP_SIGNING_SECRET.encode("utf-8")
+        sig = hmac.new(key, msg, hashlib.sha256).hexdigest()
+        q["sig"] = sig
+    sep = "&" if ("?" in base) else "?"
+    return base + sep + up.urlencode(q)
+
 CONSENT_TEXT = (
     "🔐 **Согласие с условиями**\n\n"
     "Нажимая «Принять», вы подтверждаете, что ознакомились и соглашаетесь с "
@@ -598,7 +613,7 @@ CONSENT_TEXT = (
     "После принятия я продолжу выбранное вами действие."
 )
 
-CONSENT_ACTIONS = {"start_form_or_profile", "my_profile", "view_castings", "open_tariff"}
+CONSENT_ACTIONS = {"start_form_or_profile", "my_profile", "view_castings", "open_tariff", "open_upsell"}
 
 async def guard_consent(ev: events.CallbackQuery.Event, action: str) -> bool:
     """
@@ -902,26 +917,41 @@ async def render_text(uid: int, chat_id: int, text: str, buttons=None):
 
 async def render_menu(chat_id: int, uid: int):
     active = await a_is_sub_active(uid)
+    plan = await a_get_sub_plan(uid)
+
+    # Сносим предыдущий экран (если был)
+    st = await _state_get(uid)
+    screen_id = st.get("screen_id")
+    if screen_id:
+        try:
+            await client.delete_messages(chat_id, screen_id)
+        except Exception:
+            pass
+        await _state_update(uid, {"screen_id": None})
+
+    # Сборка клавиатуры Bot API
+    rows = [
+        [{"text": "📝 Попасть в базу (5 мин)", "callback_data": "start_form_or_profile"}],
+        [{"text": "📇 Моя анкета", "callback_data": "my_profile"}],
+        [{"text": "📰 Смотреть кастинги", "callback_data": "view_castings"}],
+    ]
+
     if active:
-        tariff_row = [Button.inline("🟢 ИИ кастинг-агент активен", b"noop")]
+        if (plan or "").lower() == "premium":
+            rows.append([{ "text": "🟢 ИИ кастинг-агент активен", "callback_data": "noop" }])
+        else:
+            url = build_upsell_webapp_url(uid, plan)
+            rows.append([{ "text": "🟢 ИИ кастинг-агент активен", "web_app": { "url": url } }])
     else:
-        tariff_row = [Button.inline("⚡ Подключить ИИ кастинг-агента", b"open_tariff")]
+        rows.append([{ "text": "⚡ Подключить ИИ кастинг-агента", "callback_data": "open_tariff" }])
 
-    # доп. кнопка категорий для premium
-    extra_rows = []
-    if active and ((await a_get_sub_plan(uid)) == "premium"):
-        extra_rows.append([Button.inline("🎯 Категории (premium)", b"catpick_open")])
+    if active and ((plan or "") == "premium"):
+        rows.append([{ "text": "🎯 Категории (premium)", "callback_data": "catpick_open" }])
 
-    await render_text(
-        uid, chat_id, WELCOME,
-        buttons=[
-            [Button.inline("📝 Попасть в базу (5 мин)", b"start_form_or_profile")],
-            [Button.inline("📇 Моя анкета", b"my_profile")],
-            [Button.inline("📰 Смотреть кастинги", b"view_castings")],
-            tariff_row,
-            *extra_rows,
-        ],
-    )
+    kb = {"inline_keyboard": rows}
+    mid = await botapi_send_message(chat_id, WELCOME, kb)
+    if mid:
+        await _state_update(uid, {"screen_id": mid})
 
 # NOTE: category picker handlers will be placed after client initialization.
 
@@ -1586,15 +1616,24 @@ client = TelegramClient("user_reg_bot", API_ID, API_HASH).start(bot_token=BOT_TO
 
 # --- Category picker (premium) -----------------------------------------------
 
+# Переопределение отображаемых названий категорий по их code
+DISPLAY_TITLES = {
+    "film_role": "Роль в кино/сериале",
+    "commercial": "Рекламный ролик",
+    "extras": "Актеры массовых сцен",
+    "model": "Модель",
+}
+
 async def _render_category_picker(uid: int, chat_id: int):
     cats = await a_list_categories()
     selected = await a_get_user_category_prefs(uid)
     rows = []
     for code, title in cats:
         mark = "✅" if code in selected else "▫️"
-        rows.append([Button.inline(f"{mark} {title}", f"catpick_toggle:{code}".encode("utf-8"))])
+        label = DISPLAY_TITLES.get(code, title)
+        rows.append([Button.inline(f"{mark} {label}", f"catpick_toggle:{code}".encode("utf-8"))])
     rows.append([Button.inline("🏠 Главное меню", b"home")])
-    await render_text(uid, chat_id, "Выберите категории премиум-рассылки:", buttons=rows)
+    await render_text(uid, chat_id, "Выберите свои категории — и получайте кастинги именно под вас.", buttons=rows)
 
 @client.on(events.CallbackQuery(pattern=b"^catpick_open$"))
 async def on_catpick_open(ev: events.CallbackQuery.Event):
@@ -1685,6 +1724,8 @@ async def consent_ok(ev: events.CallbackQuery.Event):
         await view_castings(ev)
     elif action == "open_tariff":
         await open_tariff(ev)
+    elif action == "open_upsell":
+        await open_upsell(ev)
 
 @client.on(events.CallbackQuery(data=b"consent_cancel"))
 async def consent_cancel(ev: events.CallbackQuery.Event):
@@ -1730,6 +1771,50 @@ async def open_tariff(ev: events.CallbackQuery.Event):
             ]
         }
         text = "⚡ *Подключение тарифа*\n\nОткрой мини-приложение, затем вернись «Назад»."
+        mid = await botapi_send_message(chat_id, text, kb)
+        if mid:
+            st["webapp_msg_id"] = mid
+    finally:
+        st["busy"] = False
+
+@client.on(events.CallbackQuery(data=b"open_upsell"))
+async def open_upsell(ev: events.CallbackQuery.Event):
+    if await guard_consent(ev, "open_upsell"):
+        return
+
+    uid = ev.sender_id
+    chat_id = ev.chat_id
+    st = STATE.setdefault(uid, {"screen_id": None, "album_msg_ids": []})
+
+    try:
+        await ev.delete()
+    except Exception:
+        pass
+
+    if st.get("busy"):
+        return
+    st["busy"] = True
+    try:
+        await delete_current_screen(chat_id, uid)
+        await delete_album(chat_id, uid)
+        await clear_tmp_msgs(chat_id, uid)
+        await clear_sticky_notices(ev.chat_id, uid, except_id=getattr(ev, "message_id", None))
+        await cleanup_webapp_leftovers(ev.chat_id)
+
+        prev_mid = st.pop("webapp_msg_id", None)
+        if prev_mid:
+            await botapi_delete_message(chat_id, prev_mid)
+
+        plan = await a_get_sub_plan(uid)
+        url = build_upsell_webapp_url(uid, plan)
+
+        kb = {
+            "inline_keyboard": [
+                [{ "text": "📈 Мой тариф и апгрейд", "web_app": { "url": url } }],
+                [{ "text": "⬅️ Назад", "callback_data": "webapp_back" }]
+            ]
+        }
+        text = "📈 *Тариф и апгрейд*\n\nОткрой мини-приложение, затем вернись «Назад»."
         mid = await botapi_send_message(chat_id, text, kb)
         if mid:
             st["webapp_msg_id"] = mid
@@ -2846,21 +2931,35 @@ async def show_profile_screen(
             # небольшая задержка, чтобы альбом оказался выше текста в истории
             await asyncio.sleep(0.2)
 
+    # Удалим предыдущий экран профиля, чтобы нарисовать Bot API клавиатуру
+    st2 = await _state_get(uid)
+    prev = st2.get("screen_id")
+    if prev:
+        try:
+            await client.delete_messages(chat_id, prev)
+        except Exception:
+            pass
+        await _state_update(uid, {"screen_id": None})
+
     txt = "📇 **Твоя анкета:**\n\n" + format_summary(u, show_hint=not active)
-    buttons = [
-        [Button.inline("✏️ Редактировать", b"edit_profile")],
-        [Button.inline("📰 Смотреть кастинги", b"view_castings")],
+    rows = [
+        [{"text": "✏️ Редактировать", "callback_data": "edit_profile"}],
+        [{"text": "📰 Смотреть кастинги", "callback_data": "view_castings"}],
     ]
-
     if active:
-        # «неактивная» заглушка-кнопка, просто сообщает статус
-        buttons.append([Button.inline("🟢 ИИ кастинг-агент активен", b"noop")])
+        if (plan or "").lower() == "premium":
+            rows.append([{ "text": "🟢 ИИ кастинг-агент активен", "callback_data": "noop" }])
+        else:
+            url = build_upsell_webapp_url(uid, plan)
+            rows.append([{ "text": "🟢 ИИ кастинг-агент активен", "web_app": { "url": url } }])
     else:
-        buttons.append([Button.inline("⚡ Подключить ИИ кастинг-агента", b"open_tariff")])
+        rows.append([{ "text": "⚡ Подключить ИИ кастинг-агента", "callback_data": "open_tariff" }])
+    rows.append([{ "text": "🏠 Главное меню", "callback_data": "home" }])
 
-    buttons.append([Button.inline("🏠 Главное меню", b"home")])
-
-    await render_text(uid, chat_id, txt, buttons=buttons)
+    kb = {"inline_keyboard": rows}
+    new_mid = await botapi_send_message(chat_id, txt, kb)
+    if new_mid:
+        await _state_update(uid, {"screen_id": new_mid})
 # --- RUN --------------------------------------------------------------------
 
 def main():

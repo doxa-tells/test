@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS casting_category_cache (
 INSERT INTO categories (code, title) VALUES
   ('film_role', 'Роль в кино/сериале'),
   ('commercial', 'Рекламный ролик'),
-  ('extras', 'АКС / массовка'),
+  ('extras', 'Актеры массовых сцен'),
   ('model', 'Модель')
 ON CONFLICT (code) DO NOTHING;
 

@@ -72,47 +72,42 @@
     <div class="topbar">
       <div>
         <div class="kicker">Roletapp AI</div>
-        <h1>Тарифы и апгрейд</h1>
+        <h1>Тарифы</h1>
       </div>
       <a id="btnClose" class="btn secondary" href="#">Закрыть</a>
     </div>
 
-    <div class="panel" style="padding:14px; margin-bottom:16px">
-      <h2 style="margin:0 0 6px">Ваш текущий план: <span id="currentPlan" style="color:var(--glow)">—</span></h2>
-      <p class="muted" id="currentHint"></p>
-    </div>
-
     <div class="grid">
       <div class="pricingCard">
-        <h3 style="margin-top:0">Тариф: <span style="color: var(--halo)">Премиум</span></h3>
-        <div class="price">4 490 ₸/мес</div>
-        <div class="bullet"><span>✅</span><span class="t">Максимум релевантных кастингов по категориям</span></div>
-        <div class="bullet"><span>✅</span><span class="t">Приоритетные уведомления — реагируете быстрее</span></div>
-        <div class="bullet"><span>✅</span><span class="t">Отклик в 1 клик и история заявок</span></div>
-        <div class="bullet"><span>✅</span><span class="t">Поддержка при оформлении заявок</span></div>
-        <div class="bullet"><span>✅</span><span class="t">Больше попаданий в шорт‑лист за счёт скорости и точности</span></div>
-        <div class="note" style="margin-top:8px">Пробный месяц — 30 ₸, далее 4 490 ₸/мес</div>
-        <div class="cta"><a class="btn" id="ctaPremium" href="#">Подключить Премиум</a></div>
+        <h3 style="margin-top:0">Тариф: <span style="color: var(--halo)">Базовый</span></h3>
+        <div class="price">0 ₸</div>
+        <div class="bullet"><span>•</span><span class="t">Размещение вашей анкеты в базе Roletapp</span></div>
+        <div class="bullet"><span>•</span><span class="t">Видимость для кастинг‑директоров и агентств</span></div>
+        <div class="bullet"><span>•</span><span class="t">Без ИИ‑уведомлений и без приоритета</span></div>
+        <div class="bullet"><span>•</span><span class="t">Без автоподбора по категориям</span></div>
+        <div class="note" style="margin-top:8px">Если вам важно просто быть в базе. Для активного поиска ролей — Стандарт или Премиум.</div>
       </div>
 
       <div class="pricingCard">
         <h3 style="margin-top:0">Тариф: <span style="color: var(--halo)">Стандарт</span></h3>
         <div class="price">3 490 ₸/мес</div>
-        <div class="bullet"><span>✅</span><span class="t">Все топ‑кастинги РК в едином шаблоне</span></div>
-        <div class="bullet"><span>✅</span><span class="t">Фильтрация по профилю — без спама и дублей</span></div>
-        <div class="bullet"><span>✅</span><span class="t">Мгновенные уведомления и отклик в 1 клик</span></div>
+        <div class="bullet"><span>•</span><span class="t">Все топ‑кастинги РК в едином шаблоне</span></div>
+        <div class="bullet"><span>•</span><span class="t">Фильтрация по профилю — без спама и дублей</span></div>
+        <div class="bullet"><span>•</span><span class="t">Мгновенные уведомления и отклик в 1 клик</span></div>
         <div class="note" style="margin-top:8px">Пробный месяц — 30 ₸, далее 3 490 ₸/мес</div>
-        <div class="cta"><a class="btn secondary" id="ctaStandard" href="#">Подключить Стандарт</a></div>
+        <div class="cta"><a class="btn" id="ctaStandard" href="#">Подключить</a></div>
       </div>
 
       <div class="pricingCard">
-        <h3 style="margin-top:0">Тариф: <span style="color: var(--halo)">Базовый</span></h3>
-        <div class="price">0 ₸</div>
-        <div class="bullet"><span>✅</span><span class="t">Размещение вашей анкеты в базе Roletapp</span></div>
-        <div class="bullet"><span>✅</span><span class="t">Видимость для кастинг‑директоров и агентств</span></div>
-        <div class="bullet"><span>—</span><span class="t">Без ИИ‑уведомлений и без приоритета</span></div>
-        <div class="bullet"><span>—</span><span class="t">Без автоподбора по категориям</span></div>
-        <div class="note" style="margin-top:8px">Подходит, если вам важно просто быть в базе. Для активного поиска ролей выберите Стандарт или Премиум.</div>
+        <h3 style="margin-top:0">Тариф: <span style="color: var(--halo)">Премиум</span> <span class="muted" id="noteCurrentPlanPremium" style="margin-left:8px"></span></h3>
+        <div class="price">4 490 ₸/мес</div>
+        <div class="bullet"><span>•</span><span class="t">Максимум релевантных кастингов по категориям</span></div>
+        <div class="bullet"><span>•</span><span class="t">Приоритетные уведомления — реагируете быстрее</span></div>
+        <div class="bullet"><span>•</span><span class="t">Отклик в 1 клик и история заявок</span></div>
+        <div class="bullet"><span>•</span><span class="t">Поддержка при оформлении заявок</span></div>
+        <div class="bullet"><span>•</span><span class="t">Больше попаданий в шорт‑лист за счёт скорости и точности</span></div>
+        <div class="note" style="margin-top:8px">Пробный месяц — 30 ₸, далее 4 490 ₸/мес</div>
+        <div class="cta"><a class="btn" id="ctaPremium" href="#">Подключить</a></div>
       </div>
     </div>
 
@@ -122,15 +117,13 @@
   </div>
 
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="https://widget.tiptoppay.kz/bundles/widget.js"></script>
   <script>
     (function(){
       try{ window.Telegram?.WebApp?.ready?.(); }catch(e){}
       const params = new URLSearchParams(location.search);
       const plan = (params.get('plan') || '').toLowerCase().trim();
       const page = (params.get('page') || '').toLowerCase().trim();
-
-      const currentPlanEl = document.getElementById('currentPlan');
-      const currentHintEl = document.getElementById('currentHint');
 
       function planTitle(p){
         if(p === 'premium') return 'Премиум';
@@ -139,45 +132,112 @@
         return p;
       }
 
-      currentPlanEl.textContent = planTitle(plan);
-
+      // Сделать кнопку текущего тарифа неактивной
       if(plan === 'premium'){
-        currentHintEl.textContent = 'У вас активен Премиум. Мы рады, что вы с нами!';
-        const btnPrem = document.getElementById('btnUpgradePremium');
-        if (btnPrem) {
-          btnPrem.textContent = 'Премиум активен';
-          btnPrem.classList.add('secondary');
-          btnPrem.setAttribute('aria-disabled','true');
-          btnPrem.style.pointerEvents = 'none';
+        const btn = document.getElementById('ctaPremium');
+        if (btn){
+          btn.textContent = 'Подключено';
+          btn.classList.add('secondary');
+          btn.setAttribute('aria-disabled','true');
+          btn.style.pointerEvents = 'none';
+        }
+      } else if (plan === 'standard' || plan === 'pro'){
+        const btn = document.getElementById('ctaStandard');
+        if (btn){
+          btn.textContent = 'Подключено';
+          btn.classList.add('secondary');
+          btn.setAttribute('aria-disabled','true');
+          btn.style.pointerEvents = 'none';
         }
       }
-      if(plan === 'standard' || plan === 'pro' || plan === 'basic'){
-        const btnStd = document.getElementById('btnStandard');
-        if (btnStd) {
-          btnStd.textContent = 'Стандарт активен';
-          btnStd.classList.add('secondary');
-          btnStd.setAttribute('aria-disabled','true');
-          btnStd.style.pointerEvents = 'none';
-        }
-        currentHintEl.textContent = 'Вы на стандарте. Ниже — сравнение возможностей и подробности о Премиум.';
+
+      // На карточке Премиум показать текущий тариф, если он не Премиум
+      if(plan && plan !== 'premium'){
+        const note = document.getElementById('noteCurrentPlanPremium');
+        if (note){ note.textContent = `Ваш текущий тариф: ${planTitle(plan)}`; }
       }
 
       document.getElementById('btnClose')?.addEventListener('click', function(e){
         e.preventDefault(); try{ window.Telegram?.WebApp?.close?.(); }catch(_){}
       });
 
-      function notifyBot(action){
-        try{
-          // Можно отправлять данные в бота через MainButton или web_app_data, если настроено.
-          // Здесь просто подсказка пользователю.
-          alert('Перейдите назад в Telegram и завершите подключение тарифa.');
-        }catch(e){}
+      // === TipTopPay интеграция ===
+      const WEBAPP_URL       = "https://roletapp.kz/";
+      const TIPTOP_PUBLIC_ID = "pk_0f01d7d3f4ae6e22af386a501024d";
+      const TIPTOP_SITE_ID   = "8192011";
+      const CURRENCY  = "KZT";
+      const AMOUNT_TRIAL = 30;
+      const AMOUNT_MONTHLY_PRO = 3490;
+      const AMOUNT_MONTHLY_PREMIUM = 4490;
+      const API_SIGN = "/api/sign";
+      const API_SUB_CREATE = "/api/tiptoppay/subscriptions/create";
+
+      function readUidFromTgWebApp(){
+        try {
+          const id = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
+          if (id && /^\d+$/.test(String(id))) return String(id);
+          return null;
+        } catch(e){ return null; }
       }
 
-      document.getElementById('btnUpgradePremium')?.addEventListener('click', function(e){ e.preventDefault(); notifyBot('upgrade_premium'); });
-      document.getElementById('btnStandard')?.addEventListener('click', function(e){ e.preventDefault(); notifyBot('choose_standard'); });
-      document.getElementById('ctaPremium')?.addEventListener('click', function(e){ e.preventDefault(); notifyBot('upgrade_premium'); });
-      document.getElementById('ctaStandard')?.addEventListener('click', function(e){ e.preventDefault(); notifyBot('choose_standard'); });
+      async function startSubscription(planCode){
+        if (!window.tiptop || typeof window.tiptop.Widget !== 'function'){
+          alert('Платёжный виджет не загрузился. Обновите страницу.');
+          return;
+        }
+        const uid = readUidFromTgWebApp();
+        if (!uid){
+          alert('Откройте страницу из Telegram Mini App. Зайдите в наш бот и откройте веб‑приложение.');
+          return;
+        }
+
+        let ts = "", sig = "";
+        try {
+          const r = await fetch(`${API_SIGN}?uid=${encodeURIComponent(uid)}`);
+          if (r.ok){
+            const j = await r.json(); ts = j.ts||""; sig = j.sig||"";
+          }
+        } catch(e) {}
+
+        const isPremium = String(planCode).toLowerCase()==='premium';
+        const amountMonthly = isPremium ? AMOUNT_MONTHLY_PREMIUM : AMOUNT_MONTHLY_PRO;
+        const planTitleRu = isPremium ? 'Премиум' : 'Профессионал';
+
+        const widget = new window.tiptop.Widget();
+        try {
+          const res = await widget.start({
+            publicTerminalId: TIPTOP_PUBLIC_ID,
+            paymentSchema: 'Single',
+            amount: AMOUNT_TRIAL,
+            currency: CURRENCY,
+            description: `Roletapp AI — ${planTitleRu} (первый месяц ${AMOUNT_TRIAL} ₸, далее ${amountMonthly} ₸/мес)`,
+            userInfo: { accountId: uid },
+            recurrent: { interval: 'Month', period: 1 },
+            metadata: { tg_uid: uid, site_id: TIPTOP_SITE_ID, source: 'webapp', plan: planTitleRu, ts, sig },
+            successRedirectUrl: `${WEBAPP_URL}thank-you?uid=${encodeURIComponent(uid)}${ts?`&ts=${encodeURIComponent(ts)}&sig=${encodeURIComponent(sig)}`:''}`,
+            failRedirectUrl: WEBAPP_URL + 'payment-fail'
+          });
+
+          const token = res?.cardToken || res?.token || res?.CardToken;
+          if (token){
+            const startDate = new Date(); startDate.setMonth(startDate.getMonth()+1);
+            const payload = {
+              token: String(token), accountId: uid,
+              description: `Ежемесячная подписка на Roletapp AI — ${planTitleRu}`,
+              email: undefined, amount: amountMonthly, Currency: CURRENCY,
+              requireConfirmation: false, startDate: startDate.toISOString().slice(0,19),
+              interval: 'Month', period: 1
+            };
+            try { await fetch(API_SUB_CREATE, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) }); } catch(e) {}
+          }
+        } catch(err){
+          alert('Оплата не запустилась. Попробуйте ещё раз.');
+        }
+      }
+
+      document.getElementById('ctaStandard')?.addEventListener('click', function(e){ e.preventDefault(); startSubscription('pro'); });
+      document.getElementById('ctaPremium')?.addEventListener('click', function(e){ e.preventDefault(); startSubscription('premium'); });
+
     })();
   </script>
 </body>

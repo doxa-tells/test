@@ -128,6 +128,16 @@ def _get_openai_client():
 def check_match_ai(profile: Dict[str, Any], casting_text: str, *, debug: bool = False) -> bool:
     prompt = build_match_prompt(profile, casting_text)
 
+    def _append_ai_log(entry: Dict[str, Any]):
+        try:
+            base = Path(__file__).resolve().parents[1]
+            p = base / "logs" / "ai_matcher.log"
+            p.parent.mkdir(parents=True, exist_ok=True)
+            with p.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        except Exception:
+            pass
+
     if debug:
         print("\n" + "—" * 60)
         print(f"👤 Пользователь: { _short_user_summary(profile) }")
@@ -145,7 +155,17 @@ def check_match_ai(profile: Dict[str, Any], casting_text: str, *, debug: bool = 
         text = (resp.choices[0].message.content or "").strip().lower()
         if debug:
             print(f"🤖 Ответ модели: {text!r}")
-        return text.startswith("да")
+        decision = text.startswith("да")
+        _append_ai_log({
+            "ts": datetime.utcnow().isoformat(),
+            "user_id": int(profile.get("user_id") or 0),
+            "user_summary": _short_user_summary(profile),
+            "casting_preview": (casting_text or "")[:800],
+            "prompt": prompt,
+            "response": text,
+            "decision": bool(decision),
+        })
+        return decision
     except Exception as e:
         print(f"⚠️ Ошибка запроса к ИИ: {e}")
         # простой фоллбэк: город + пол в тексте
@@ -153,7 +173,18 @@ def check_match_ai(profile: Dict[str, Any], casting_text: str, *, debug: bool = 
             cities = _as_list_from_csv(profile.get("cities"))
             sex = _val(profile.get("sex")).lower()
             text = casting_text.lower()
-            return bool(any(c.lower() in text for c in cities) and (sex and sex in text))
+            decision = bool(any(c.lower() in text for c in cities) and (sex and sex in text))
+            _append_ai_log({
+                "ts": datetime.utcnow().isoformat(),
+                "user_id": int(profile.get("user_id") or 0),
+                "user_summary": _short_user_summary(profile),
+                "casting_preview": (casting_text or "")[:800],
+                "prompt": prompt,
+                "error": str(e),
+                "response": "<fallback>",
+                "decision": bool(decision),
+            })
+            return decision
         except Exception:
             return False
 

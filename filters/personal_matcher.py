@@ -4,6 +4,7 @@ import os
 import json
 import traceback
 from typing import Optional, List, Tuple
+import re
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from datetime import datetime, timedelta
@@ -171,6 +172,73 @@ def _log_users(users):
 
 # ── Сохранение + уведомление/инкремент ──────────────────────────────────────
 
+def _parse_user_age_range(u: dict) -> Optional[Tuple[int, int]]:
+    """Парсим 'игровой возраст' пользователя из поля age_range (например '20-25')."""
+    ar = (u.get("age_range") or "").strip()
+    if not ar:
+        return None
+    # варианты: '20-25', '20–25', 'от 20 до 25', '20+' (интерпретируем как 20-99)
+    ar = ar.replace("–", "-")
+    m = re.search(r"(\d{1,2})\s*[-]\s*(\d{1,2})", ar)
+    if m:
+        a, b = int(m.group(1)), int(m.group(2))
+        if a > b:
+            a, b = b, a
+        return (a, b)
+    m = re.search(r"от\s*(\d{1,2})\s*до\s*(\d{1,2})", ar, re.IGNORECASE)
+    if m:
+        a, b = int(m.group(1)), int(m.group(2))
+        if a > b:
+            a, b = b, a
+        return (a, b)
+    m = re.search(r"(\d{1,2})\s*\+", ar)
+    if m:
+        a = int(m.group(1))
+        return (a, 99)
+    m = re.search(r"(\d{1,2})", ar)
+    if m:
+        a = int(m.group(1))
+        return (a, a)
+    return None
+
+def _parse_casting_age_range(text: str) -> Optional[Tuple[int, int]]:
+    """Извлекаем возраст/диапазон из текста кастинга."""
+    t = (text or "").lower()
+    # нормализуем тире
+    t = t.replace("–", "-")
+    # диапазоны: 12-13, 18-25, от 20 до 30
+    m = re.search(r"\b(\d{1,2})\s*[-]\s*(\d{1,2})\b", t)
+    if m:
+        a, b = int(m.group(1)), int(m.group(2))
+        if a > b:
+            a, b = b, a
+        return (a, b)
+    m = re.search(r"от\s*(\d{1,2})\s*до\s*(\d{1,2})", t)
+    if m:
+        a, b = int(m.group(1)), int(m.group(2))
+        if a > b:
+            a, b = b, a
+        return (a, b)
+    # один возраст: '12 лет', '12-ть лет' (упрощенно)
+    m = re.search(r"\b(\d{1,2})\s*лет\b", t)
+    if m:
+        a = int(m.group(1))
+        return (a, a)
+    # 'до 12 лет'
+    m = re.search(r"до\s*(\d{1,2})\s*лет", t)
+    if m:
+        b = int(m.group(1))
+        return (0, b)
+    # '18+' условно как 18-99
+    m = re.search(r"\b(\d{1,2})\s*\+\b", t)
+    if m:
+        a = int(m.group(1))
+        return (a, 99)
+    return None
+
+def _age_ranges_overlap(a: Tuple[int, int], b: Tuple[int, int]) -> bool:
+    return max(a[0], b[0]) <= min(a[1], b[1])
+
 def _hard_constraints_ok(u: dict, text: str) -> bool:
     t = (text or "").lower()
     sex = (u.get("sex") or "").lower()
@@ -193,6 +261,25 @@ def _hard_constraints_ok(u: dict, text: str) -> bool:
     if any(c in t for c in mentioned_common):
         if user_cities and not any(c in t for c in user_cities):
             return False
+    # возраст (игровой возраст пользователя против требований кастинга)
+    user_age = _parse_user_age_range(u)
+    cast_age = _parse_casting_age_range(t)
+
+    # Спец-обработка детских ключевых слов, если явного возраста нет
+    child_words = ["мальчик", "девочка", "подросток", "ребенок", "ребёнок", "kid", "teen"]
+    has_child_kw = any(w in t for w in child_words)
+
+    if user_age:
+        if cast_age:
+            # если кастинг явно указал возраст — требуем пересечение диапазонов
+            if not _age_ranges_overlap(user_age, cast_age):
+                return False
+        elif has_child_kw:
+            # без явного возраста, но роль детская — ограничим верхнюю границу
+            # считаем детским: максимум 16 лет
+            if user_age[0] > 16:
+                return False
+
     return True
 
 def _append_match_log(entry: dict):
@@ -316,11 +403,31 @@ async def handle_new_casting(event):
             else:
                 free.append(u)
 
+        # логируем сводку по событию и когорты
+        try:
+            _append_match_log({
+                "ts": datetime.utcnow().isoformat(),
+                "event": "NewMessage",
+                "chat_id": int(event.chat_id),
+                "topic_id": int(topic_id) if topic_id is not None else None,
+                "msg_ids": [int(msg.id)],
+                "cats": sorted(list(cats)) if cats else [],
+                "cohorts": {
+                    "premium_with_prefs": len(premium_with_prefs),
+                    "premium_no_prefs": len(premium_no_prefs),
+                    "standard": len(standard),
+                    "free": len(free),
+                }
+            })
+        except Exception:
+            pass
+
         for cohort in (premium_with_prefs, standard):
             for u in cohort:
                 user_id = u["user_id"]
                 print(f"\n--- 🔎 Проверка user_id={user_id} ---")
-                ok = _hard_constraints_ok(u, casting_text)
+                # Полный контроль ИИ — только check_match_ai (debug для подробного лога)
+                ok = check_match_ai(u, casting_text, debug=True)
                 if not ok:
                     print("⛔️ Не подходит (ИИ).")
                     continue
@@ -399,11 +506,30 @@ async def handle_album(event):
             else:
                 free.append(u)
 
+        # логируем сводку по событию и когорты
+        try:
+            _append_match_log({
+                "ts": datetime.utcnow().isoformat(),
+                "event": "Album",
+                "chat_id": int(event.chat_id),
+                "topic_id": int(topic_id) if topic_id is not None else None,
+                "msg_ids": [int(m) for m in album_ids],
+                "cats": sorted(list(cats)) if cats else [],
+                "cohorts": {
+                    "premium_with_prefs": len(premium_with_prefs),
+                    "premium_no_prefs": len(premium_no_prefs),
+                    "standard": len(standard),
+                    "free": len(free),
+                }
+            })
+        except Exception:
+            pass
+
         for cohort in (premium_with_prefs, standard):
             for u in cohort:
                 user_id = u["user_id"]
                 print(f"\n--- 🔎 Проверка (альбом) user_id={user_id} ---")
-                ok = _hard_constraints_ok(u, casting_text)
+                ok = check_match_ai(u, casting_text, debug=True)
                 if not ok:
                     print("⛔️ Не подходит (ИИ).")
                     continue

@@ -30,8 +30,8 @@ declare namespace __next_route_internal_types__ {
 
   type StaticRoutes = 
     | `/`
-    | `/favorites`
     | `/about`
+    | `/favorites`
     | `/partners`
   type DynamicRoutes<T extends string = string> = 
     | `/actor/${SafeSlug<T>}`

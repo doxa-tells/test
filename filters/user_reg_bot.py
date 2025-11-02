@@ -862,7 +862,7 @@ def format_summary(data: Dict[str, Any], *, show_hint: bool = True) -> str:
     langs = (", ".join(data["languages"]) if isinstance(data.get("languages"), list)
              else (data.get("languages") or "—"))
     lines = [
-        f"🧾 **{data.get('full_name','') or '—'}**",
+        f"🧾 {data.get('full_name','') or '—'}",
         f"📍 Города: {data.get('cities','—')}",
         f"👫 Пол: {data.get('sex','—')}",
         f"🎂 Игровой возраст: {data.get('age_range','—')}",
@@ -885,7 +885,7 @@ def format_summary(data: Dict[str, Any], *, show_hint: bool = True) -> str:
     if show_hint:
         lines += [
             "",
-            "🌟**Подсказка:**",
+            "🌟 Подсказка:",
             "Подключи ИИ-кастинг агента и получай только подходящие для тебя кастинги из 30+ WA/TG групп с возможностью отправлять портфолио в один клик.",
         ]
     return "\n".join(lines)
@@ -917,7 +917,6 @@ async def render_text(uid: int, chat_id: int, text: str, buttons=None):
 
 async def render_menu(chat_id: int, uid: int):
     active = await a_is_sub_active(uid)
-    plan = await a_get_sub_plan(uid)
     plan = await a_get_sub_plan(uid)
 
     # Сносим предыдущий экран (если был)
@@ -2888,6 +2887,7 @@ async def show_profile_screen(
     reset_album: bool = False,
 ):
     active = await a_is_sub_active(uid)
+    plan = await a_get_sub_plan(uid)
     st = await _state_get(uid)
     st.setdefault("screen_id", None)
     st.setdefault("album_msg_ids", [])
@@ -2962,7 +2962,7 @@ async def show_profile_screen(
             pass
         await _state_update(uid, {"screen_id": None})
 
-    txt = "📇 **Твоя анкета:**\n\n" + format_summary(u, show_hint=not active)
+    txt = "📇 Твоя анкета:\n\n" + format_summary(u, show_hint=not active)
     rows = [
         [{"text": "✏️ Редактировать", "callback_data": "edit_profile"}],
         [{"text": "📰 Смотреть кастинги", "callback_data": "view_castings"}],

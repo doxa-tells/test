@@ -39,9 +39,6 @@ export default async function Page({ searchParams }: { searchParams: SP }) {
   return (
     <>
       <h1 className="h1">База актёров</h1>
-      <p className="p">
-        Все анкеты из общей базы. Фото тянутся из <code>data/user_media</code>.
-      </p>
 
       {/* панель фильтров */}
       <FilterBar />

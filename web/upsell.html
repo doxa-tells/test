@@ -79,7 +79,7 @@
 
     <div class="grid">
       <div class="pricingCard">
-        <h3 style="margin-top:0">Тариф: <span style="color: var(--halo)">Базовый</span></h3>
+        <h3 style="margin-top:0">Тариф: <span style="color: var(--halo)">Бесплатно</span></h3>
         <div class="price">0 ₸</div>
         <div class="bullet"><span>•</span><span class="t">Размещение вашей анкеты в базе Roletapp</span></div>
         <div class="bullet"><span>•</span><span class="t">Видимость для кастинг‑директоров и агентств</span></div>
@@ -151,11 +151,6 @@
         }
       }
 
-      // На карточке Премиум показать текущий тариф, если он не Премиум
-      if(plan && plan !== 'premium'){
-        const note = document.getElementById('noteCurrentPlanPremium');
-        if (note){ note.textContent = `Ваш текущий тариф: ${planTitle(plan)}`; }
-      }
 
       document.getElementById('btnClose')?.addEventListener('click', function(e){
         e.preventDefault(); try{ window.Telegram?.WebApp?.close?.(); }catch(_){}

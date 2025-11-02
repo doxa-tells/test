@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { getActorById, type Actor } from "../../../lib/db";
-import { photoUrl } from "../../../lib/media";
+import Gallery from "../../../components/Gallery";
 
 export const dynamic = "force-dynamic";
 
@@ -45,17 +45,7 @@ export default async function ActorPage({ params }: { params: { id: string } }) 
         {a.full_name}
       </h1>
 
-      <div className="grid" style={{ gridTemplateColumns: "repeat(4,1fr)", gap: 12 }}>
-        {[1, 2, 3, 4].map((n) => (
-          <img
-            key={n}
-            className="thumb"
-            src={photoUrl(a.user_id, n as 1 | 2 | 3 | 4)}
-            alt={`${a.full_name ?? "Актёр"} фото ${n}`}
-            loading="lazy"
-          />
-        ))}
-      </div>
+      <Gallery userId={a.user_id} name={a.full_name || "Актёр"} />
 
       <table className="table">
         <tbody>

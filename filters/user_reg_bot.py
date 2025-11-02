@@ -918,6 +918,7 @@ async def render_text(uid: int, chat_id: int, text: str, buttons=None):
 async def render_menu(chat_id: int, uid: int):
     active = await a_is_sub_active(uid)
     plan = await a_get_sub_plan(uid)
+    plan = await a_get_sub_plan(uid)
 
     # Сносим предыдущий экран (если был)
     st = await _state_get(uid)

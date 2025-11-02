@@ -14,3 +14,4 @@ __pycache__/
 *.session
 /data/user_media/
 /filters/media/
+/web/catalog/.next

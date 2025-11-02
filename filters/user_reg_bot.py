@@ -993,8 +993,26 @@ def _find_contact_in_text(text: str) -> dict:
 
     return {}
 
-def _build_apply_text(u: dict, ad_text: str) -> str:
+def _extract_project_and_role(ad_formatted: str) -> str:
+    """Берёт из форматированного текста только строки Проект и Роль/Типаж.
+    Если не находит — возвращает исходный текст как есть (на всякий случай).
+    """
+    try:
+        lines = [(l or "").strip() for l in (ad_formatted or "").splitlines()]
+        picked = []
+        for l in lines:
+            if l.startswith("🎨 Проект:") or l.startswith("👤 Роль/Типаж:"):
+                picked.append(l)
+        if picked:
+            return "\n".join(picked)
+        return ad_formatted.strip()
+    except Exception:
+        return (ad_formatted or "").strip()
+
+def _build_apply_text(u: dict, ad_text: str, reduce_for_email: bool = False) -> str:
     ad = (ad_text or "").strip()
+    if reduce_for_email:
+        ad = _extract_project_and_role(ad)
     card = format_summary(u, show_hint=False)
     return (
         "Здравствуйте.\n"
@@ -1002,7 +1020,7 @@ def _build_apply_text(u: dict, ad_text: str) -> str:
         f"{ad}\n\n"
         "Моя анкета:\n"
         f"{card}"
-        )
+    )
 async def build_apply_button_dict(uid: int, ad_text: str) -> dict:
     """
     Возвращает словарь кнопки для inline_keyboard (Bot API):
@@ -1015,10 +1033,9 @@ async def build_apply_button_dict(uid: int, ad_text: str) -> dict:
     if not u:
         return { "text": "✅ Откликнуться", "callback_data": "apply_unavailable" }
 
-    msg = _build_apply_text(u, ad_text)
-
     # ✉️ e-mail -> открываем нашу мини-аппу /apply
     if contact.get("type") == "email":
+        msg = _build_apply_text(u, ad_text, reduce_for_email=True)
         url = build_apply_webapp_url(
             APPLY_WEBAPP_URL,
             uid=uid,
@@ -1031,16 +1048,19 @@ async def build_apply_button_dict(uid: int, ad_text: str) -> dict:
 
     # 💬 WhatsApp
     if contact.get("type") == "wa":
+        msg = _build_apply_text(u, ad_text)
         enc = up.quote(msg)
         return { "text": "✅ Откликнуться", "url": f"https://wa.me/{contact['phone']}?text={enc}" }
 
     # 🤝 Telegram username
     if contact.get("type") == "tg":
+        msg = _build_apply_text(u, ad_text)
         enc = up.quote(msg)
         user_link = f"https://t.me/{contact['username']}"
         return { "text": "✅ Откликнуться", "url": f"https://t.me/share/url?url={up.quote(user_link)}&text={enc}" }
 
     # Fallback — просто текст для поделиться
+    msg = _build_apply_text(u, ad_text)
     enc = up.quote(msg)
     return { "text": "✅ Откликнуться", "url": f"https://t.me/share/url?text={enc}" }
 

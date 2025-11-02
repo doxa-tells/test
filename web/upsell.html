@@ -79,9 +79,7 @@
 
     <div class="panel" style="padding:14px; margin-bottom:16px">
       <h2 style="margin:0 0 6px">Ваш текущий план: <span id="currentPlan" style="color:var(--glow)">—</span></h2>
-      <p class="muted" id="currentHint">Откройте максимум возможностей с Премиум.</p>
-      <div class="badge" id="uidBadge" style="display:none">UID: <span id="uidText"></span></div>
-      <div class="cta"><a class="btn" id="btnUpgradePremium" href="#">Апгрейд до Премиум</a><a class="btn secondary" id="btnStandard" href="#">Стандарт</a></div>
+      <p class="muted" id="currentHint"></p>
     </div>
 
     <div class="grid">
@@ -92,6 +90,7 @@
         <div class="bullet"><span>✅</span><span class="t">Приоритетные уведомления — реагируете быстрее</span></div>
         <div class="bullet"><span>✅</span><span class="t">Отклик в 1 клик и история заявок</span></div>
         <div class="bullet"><span>✅</span><span class="t">Поддержка при оформлении заявок</span></div>
+        <div class="bullet"><span>✅</span><span class="t">Больше попаданий в шорт‑лист за счёт скорости и точности</span></div>
         <div class="note" style="margin-top:8px">Пробный месяц — 30 ₸, далее 4 490 ₸/мес</div>
         <div class="cta"><a class="btn" id="ctaPremium" href="#">Подключить Премиум</a></div>
       </div>
@@ -105,12 +104,19 @@
         <div class="note" style="margin-top:8px">Пробный месяц — 30 ₸, далее 3 490 ₸/мес</div>
         <div class="cta"><a class="btn secondary" id="ctaStandard" href="#">Подключить Стандарт</a></div>
       </div>
+
+      <div class="pricingCard">
+        <h3 style="margin-top:0">Тариф: <span style="color: var(--halo)">Базовый</span></h3>
+        <div class="price">0 ₸</div>
+        <div class="bullet"><span>✅</span><span class="t">Размещение вашей анкеты в базе Roletapp</span></div>
+        <div class="bullet"><span>✅</span><span class="t">Видимость для кастинг‑директоров и агентств</span></div>
+        <div class="bullet"><span>—</span><span class="t">Без ИИ‑уведомлений и без приоритета</span></div>
+        <div class="bullet"><span>—</span><span class="t">Без автоподбора по категориям</span></div>
+        <div class="note" style="margin-top:8px">Подходит, если вам важно просто быть в базе. Для активного поиска ролей выберите Стандарт или Премиум.</div>
+      </div>
     </div>
 
-    <div class="tile" style="margin-top:14px">
-      <h3 style="margin-top:0">Почему Премиум окупается</h3>
-      <p>Вы быстрее видите важные кастинги и откликаетесь первыми — повышается шанс попасть в шорт‑лист и взять оплачиваемую роль. Один съёмочный день окупает подписку на месяцы вперёд.</p>
-    </div>
+
 
     <div style="height:12px"></div>
   </div>
@@ -120,14 +126,11 @@
     (function(){
       try{ window.Telegram?.WebApp?.ready?.(); }catch(e){}
       const params = new URLSearchParams(location.search);
-      const uid = params.get('uid') || '';
       const plan = (params.get('plan') || '').toLowerCase().trim();
       const page = (params.get('page') || '').toLowerCase().trim();
 
       const currentPlanEl = document.getElementById('currentPlan');
       const currentHintEl = document.getElementById('currentHint');
-      const uidBadge = document.getElementById('uidBadge');
-      const uidText = document.getElementById('uidText');
 
       function planTitle(p){
         if(p === 'premium') return 'Премиум';
@@ -137,11 +140,26 @@
       }
 
       currentPlanEl.textContent = planTitle(plan);
-      if(uid){ uidText.textContent = uid; uidBadge.style.display='inline-flex'; }
 
       if(plan === 'premium'){
-        currentHintEl.textContent = 'У вас Премиум. Спасибо!';
-        document.getElementById('btnUpgradePremium').style.display='none';
+        currentHintEl.textContent = 'У вас активен Премиум. Мы рады, что вы с нами!';
+        const btnPrem = document.getElementById('btnUpgradePremium');
+        if (btnPrem) {
+          btnPrem.textContent = 'Премиум активен';
+          btnPrem.classList.add('secondary');
+          btnPrem.setAttribute('aria-disabled','true');
+          btnPrem.style.pointerEvents = 'none';
+        }
+      }
+      if(plan === 'standard' || plan === 'pro' || plan === 'basic'){
+        const btnStd = document.getElementById('btnStandard');
+        if (btnStd) {
+          btnStd.textContent = 'Стандарт активен';
+          btnStd.classList.add('secondary');
+          btnStd.setAttribute('aria-disabled','true');
+          btnStd.style.pointerEvents = 'none';
+        }
+        currentHintEl.textContent = 'Вы на стандарте. Ниже — сравнение возможностей и подробности о Премиум.';
       }
 
       document.getElementById('btnClose')?.addEventListener('click', function(e){

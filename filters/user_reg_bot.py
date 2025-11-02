@@ -834,10 +834,10 @@ async def _state_clear(uid: int):
         STATE.pop(uid, None)
 
 WELCOME = (
-    "🏠**Главное меню**\n\n"
-    "📱**Roletapp AI** - Кастинг - платформа с базой 2000+ актеров.\n\n"
+    "🏠Главное меню\n\n"
+    "📱Roletapp AI - Кастинг - платформа с базой 2000+ актеров.\n\n"
     "Нашей БЕСПЛАТНОЙ базой пользуются более 40 кастинг-директоров "
-    "**Salem, TigerFilms, Freedom Media, Unico Play и др.**\n\n"
+    "Salem, TigerFilms, Freedom Media, Unico Play и др.\n\n"
     "Используйте кнопки ниже:\n\n"
 )
 

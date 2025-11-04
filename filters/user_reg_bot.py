@@ -2416,7 +2416,8 @@ async def cast_next(ev: events.CallbackQuery.Event):
         except Exception:
             pass
         if cnt % 15 == 0:
-            upsell_url = build_upsell_webapp_url(uid, plan=None)
+            plan = await a_get_sub_plan(uid)
+            upsell_url = build_upsell_webapp_url(uid, plan=plan)
             kb = {
                 "inline_keyboard": [
                     [{ "text": "Подключить премиум можно здесь", "web_app": { "url": upsell_url } }],

@@ -937,15 +937,12 @@ async def render_menu(chat_id: int, uid: int):
     ]
 
     if active:
-        if (plan or "").lower() == "premium":
-            rows.append([{ "text": "🟢 ИИ кастинг-агент активен", "callback_data": "noop" }])
-        else:
-            url = build_upsell_webapp_url(uid, plan)
-            rows.append([{ "text": "🟢 ИИ кастинг-агент активен", "web_app": { "url": url } }])
+        url = build_upsell_webapp_url(uid, plan)
+        rows.append([{ "text": "🟢 ИИ кастинг-агент активен", "web_app": { "url": url } }])
     else:
         rows.append([{ "text": "⚡ Подключить ИИ кастинг-агента", "callback_data": "open_tariff" }])
 
-    if active and ((plan or "") == "premium"):
+    if active and ((plan or "").lower() == "premium"):
         rows.append([{ "text": "🎯 Категории (premium)", "callback_data": "catpick_open" }])
 
     kb = {"inline_keyboard": rows}
@@ -1658,7 +1655,7 @@ async def _render_category_picker(uid: int, chat_id: int):
 @client.on(events.CallbackQuery(pattern=b"^catpick_open$"))
 async def on_catpick_open(ev: events.CallbackQuery.Event):
     uid = ev.sender_id
-    if not (await a_is_sub_active(uid)) or (await a_get_sub_plan(uid)) != "premium":
+    if not (await a_is_sub_active(uid)) or ((await a_get_sub_plan(uid)) or "").lower() != "premium":
         await ev.answer("Доступно только для premium", alert=True)
         return
     await _render_category_picker(uid, ev.chat_id)
@@ -1666,7 +1663,7 @@ async def on_catpick_open(ev: events.CallbackQuery.Event):
 @client.on(events.CallbackQuery(pattern=b"^catpick_toggle:"))
 async def on_catpick_toggle(ev: events.CallbackQuery.Event):
     uid = ev.sender_id
-    if not (await a_is_sub_active(uid)) or (await a_get_sub_plan(uid)) != "premium":
+    if not (await a_is_sub_active(uid)) or ((await a_get_sub_plan(uid)) or "").lower() != "premium":
         await ev.answer("Доступно только для premium", alert=True)
         return
     try:
@@ -2969,11 +2966,8 @@ async def show_profile_screen(
         [{"text": "📰 Смотреть кастинги", "callback_data": "view_castings"}],
     ]
     if active:
-        if (plan or "").lower() == "premium":
-            rows.append([{ "text": "🟢 ИИ кастинг-агент активен", "callback_data": "noop" }])
-        else:
-            url = build_upsell_webapp_url(uid, plan)
-            rows.append([{ "text": "🟢 ИИ кастинг-агент активен", "web_app": { "url": url } }])
+        url = build_upsell_webapp_url(uid, plan)
+        rows.append([{ "text": "🟢 ИИ кастинг-агент активен", "web_app": { "url": url } }])
     else:
         rows.append([{ "text": "⚡ Подключить ИИ кастинг-агента", "callback_data": "open_tariff" }])
     rows.append([{ "text": "🏠 Главное меню", "callback_data": "home" }])

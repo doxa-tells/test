@@ -125,6 +125,23 @@ def ensure_db():
         # extend for plan/valid_until if not exists (idempotent)
         cur.execute("ALTER TABLE subs ADD COLUMN IF NOT EXISTS plan TEXT")
         cur.execute("ALTER TABLE subs ADD COLUMN IF NOT EXISTS valid_until TIMESTAMPTZ")
+        # payments table to track transactions for refunds
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS payments (
+                id SERIAL PRIMARY KEY,
+                user_id BIGINT,
+                transaction_id BIGINT,
+                amount NUMERIC(12,2),
+                currency TEXT,
+                status TEXT,          -- paid|refund|cancel|fail|unknown
+                notif_type TEXT,      -- Pay|Confirm|Recurrent|Refund|Cancel|Fail|None
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                payload JSONB
+            )
+            """
+        )
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_payments_user_created ON payments(user_id, created_at DESC)")
     con.commit()
     con.close()
 
@@ -143,6 +160,53 @@ def set_sub_status(uid: str, status: str):
             (uid, status, datetime.utcnow())
         )
     con.commit(); con.close()
+
+def _extract_txn(payload: dict) -> tuple[int | None, float | None, str | None]:
+    """Return (TransactionId, Amount, Currency) if present in payload."""
+    try:
+        txn = payload.get("TransactionId") or payload.get("transactionId") or payload.get("Id") or payload.get("id")
+        txn_id = int(str(txn)) if txn is not None and str(txn).isdigit() else None
+    except Exception:
+        txn_id = None
+    amt = None
+    try:
+        # TipTopPay может слать разные ключи
+        a = (
+            payload.get("Amount") or payload.get("PaymentAmount") or payload.get("amount")
+        )
+        if a is not None:
+            amt = round(float(str(a).replace(",", ".")), 2)
+    except Exception:
+        amt = None
+    cur = (
+        payload.get("PaymentCurrency") or payload.get("Currency") or payload.get("currency") or None
+    )
+    return txn_id, amt, (str(cur) if cur else None)
+
+def _store_payment(uid: str | None, status: str, notif_type: str | None, payload: dict):
+    try:
+        ensure_db()
+        txn_id, amount, currency = _extract_txn(payload)
+        con = _db_connect()
+        with con.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO payments(user_id, transaction_id, amount, currency, status, notif_type, payload)
+                VALUES(%s,%s,%s,%s,%s,%s,%s)
+                """,
+                (
+                    int(uid) if uid and str(uid).isdigit() else None,
+                    txn_id,
+                    amount,
+                    currency,
+                    status,
+                    (notif_type or None),
+                    json.dumps(payload),
+                ),
+            )
+        con.commit(); con.close()
+    except Exception:
+        pass
 
 def clear_sub(uid: str):
     """Sets subscription to inactive and clears plan/valid_until to avoid free access."""
@@ -511,6 +575,27 @@ async def ttp_subscriptions_cancel_by_account(request: Request):
         pass
     return JSONResponse(data_cancel, status_code=(code_cancel or 502))
 
+# === Proxy TipTopPay: Refunds ===
+@app.post("/api/tiptoppay/payments/refund")
+async def ttp_payments_refund(request: Request):
+    """Proxy for TipTopPay refunds. Body must contain TransactionId and Amount."""
+    body = await request.json()
+    # Minimal validation
+    txn = body.get("TransactionId")
+    amt = body.get("Amount")
+    if txn is None or amt is None:
+        return JSONResponse({"Success": False, "Message": "TransactionId and Amount are required"}, status_code=400)
+    code, data = await _ttp_post("/payments/refund", {"TransactionId": txn, "Amount": amt, "JsonData": body.get("JsonData")})
+    # Optionally store refund record (unknown uid)
+    try:
+        uid = str(body.get("uid") or "").strip() or None
+        status = "refund" if (isinstance(data, dict) and (data.get("Success") is True or data.get("success") is True)) else "fail"
+        payload = {"request": {"TransactionId": txn, "Amount": amt}, "response": data}
+        _store_payment(uid, status, "Refund", payload)
+    except Exception:
+        pass
+    return JSONResponse(data, status_code=(code or 502))
+
 # === Proxy TipTopPay: Orders ===
 @app.post("/api/tiptoppay/orders/create")
 async def ttp_orders_create(request: Request):
@@ -581,6 +666,8 @@ async def tiptoppay_webhook(
                 plan = _extract_plan(payload)
                 valid_until = _compute_valid_until(payload)
                 upsert_sub(uid, status="active", plan=plan, valid_until=valid_until)
+                # Запишем платёж как успешный
+                _store_payment(uid, "paid", notif_type, payload)
                 # выдать доступ: снять бан (если был) и отправить ссылку-приглашение
                 try:
                     _unban_in_group(uid)
@@ -589,6 +676,8 @@ async def tiptoppay_webhook(
                     pass
             else:
                 clear_sub(uid)
+                # Зафиксируем отмену/неуспех как запись
+                _store_payment(uid, "refund" if (notif_type == "Refund") else ("cancel" if (notif_type == "Cancel") else "fail"), notif_type, payload)
                 # забрать доступ: кикнуть (ban) из группы
                 try:
                     _ban_from_group(uid)

@@ -2416,10 +2416,10 @@ async def cast_next(ev: events.CallbackQuery.Event):
         except Exception:
             pass
         if cnt % 15 == 0:
-            url = build_webapp_url(uid)
+            upsell_url = build_upsell_webapp_url(uid, plan=None)
             kb = {
                 "inline_keyboard": [
-                    [{ "text": "Подключить премиум можно здесь", "web_app": { "url": url } }],
+                    [{ "text": "Подключить премиум можно здесь", "web_app": { "url": upsell_url } }],
                     [{ "text": "⬅️ Вернуться к просмотру", "callback_data": "ad_continue" }]
                 ]
             }

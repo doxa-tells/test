@@ -66,6 +66,9 @@ APPLY_WEBAPP_URL = _getenv("APPLY_WEBAPP_URL", required=True)
 WEBAPP_SIGNING_SECRET = _getenv("WEBAPP_SIGNING_SECRET", required=False)
 TTP_WEBHOOK_BASE = os.getenv("TTP_WEBHOOK_BASE", "http://127.0.0.1:8000").rstrip("/")
 UPSALE_WEBAPP_URL = os.getenv("UPSALE_WEBAPP_URL")
+SUPPORT_GROUP_ID_RAW = (os.getenv("SUPPORT_GROUP_ID") or "").strip()
+SUPPORT_GROUP_ID = int(SUPPORT_GROUP_ID_RAW) if SUPPORT_GROUP_ID_RAW and SUPPORT_GROUP_ID_RAW.lstrip("-").isdigit() else None
+SUPPORT_GROUP_INVITE = (os.getenv("SUPPORT_GROUP_INVITE") or "").strip()
 
 # --- asyncpg pool & redis client --------------------------------------------
 PG_DB = os.getenv("PG_DB")
@@ -790,6 +793,42 @@ async def botapi_copy_message(chat_id: int, from_chat_id: int, message_id: int,
                 return int(data["result"]["message_id"])
             print("BotAPI copyMessage error:", data)
             return None
+
+async def botapi_get_chat_member(chat_id: int, user_id: int) -> dict | None:
+    payload = {"chat_id": chat_id, "user_id": user_id}
+    async with aiohttp.ClientSession() as session:
+        async with session.post(f"{BOT_API_BASE}/getChatMember", json=payload) as resp:
+            try:
+                data = await resp.json()
+            except Exception:
+                return None
+            if data.get("ok"):
+                return data.get("result")
+            return None
+
+async def maybe_remind_support_group(uid: int, chat_id: int):
+    if SUPPORT_GROUP_ID is None or not SUPPORT_GROUP_INVITE:
+        return
+    # не чаще раза в сутки
+    st = await _state_get(uid)
+    last = int(st.get("support_reminded_ts", 0) or 0)
+    now_ts = int(time.time())
+    if (now_ts - last) < 86400:
+        return
+    try:
+        member = await botapi_get_chat_member(SUPPORT_GROUP_ID, uid)
+        status = (member or {}).get("status")
+        if status in {"creator", "administrator", "member"}:
+            return
+    except Exception:
+        pass
+    kb = {
+        "inline_keyboard": [
+            [{"text": "💬 Вступить в чат поддержки", "url": SUPPORT_GROUP_INVITE}],
+        ]
+    }
+    await botapi_send_message(chat_id, "У тебя активна подписка. Присоединяйся к нашему чату поддержки и общей ленте кастингов:", kb)
+    await _state_update(uid, {"support_reminded_ts": now_ts})
 # --- STATE ------------------------------------------------------------------
 
 STATE: Dict[int, Dict[str, Any]] = {}

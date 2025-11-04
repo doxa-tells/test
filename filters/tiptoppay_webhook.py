@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from psycopg2.extras import RealDictCursor
 from datetime import datetime, timedelta
 from fastapi import FastAPI, Request, Header
+import requests
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -50,6 +51,53 @@ app.add_middleware(
     allow_methods=["GET","POST","OPTIONS"],
     allow_headers=["*"],
 )
+
+# === Telegram Bot API config for group access control ===
+BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
+SUPPORT_GROUP_ID_RAW = (os.getenv("SUPPORT_GROUP_ID", "") or "").strip()
+SUPPORT_GROUP_ID = int(SUPPORT_GROUP_ID_RAW) if SUPPORT_GROUP_ID_RAW and SUPPORT_GROUP_ID_RAW.lstrip("-").isdigit() else None
+SUPPORT_GROUP_INVITE = (os.getenv("SUPPORT_GROUP_INVITE", "") or "").strip()
+TG_API = f"https://api.telegram.org/bot{BOT_TOKEN}" if BOT_TOKEN else None
+
+def _botapi(method: str, payload: dict, *, use_json: bool = True) -> tuple[int, dict]:
+    if not TG_API:
+        return 0, {"ok": False, "error": "BOT_TOKEN not configured"}
+    url = f"{TG_API}/{method}"
+    try:
+        if use_json:
+            r = requests.post(url, json=payload, timeout=10)
+        else:
+            r = requests.post(url, data=payload, timeout=10)
+        try:
+            data = r.json()
+        except Exception:
+            data = {"raw": r.text}
+        return r.status_code, data
+    except Exception as e:
+        return 0, {"ok": False, "error": str(e)}
+
+def _dm_invite(uid: str):
+    if not TG_API or not SUPPORT_GROUP_INVITE:
+        return
+    kb = {
+        "inline_keyboard": [[{ "text": "💬 Вступить в чат поддержки", "url": SUPPORT_GROUP_INVITE }]]
+    }
+    text = (
+        "🎟 Доступ к нашему чату поддержки и общей ленте кастингов активен.\n\n"
+        "Нажмите, чтобы присоединиться:"
+    )
+    _botapi("sendMessage", {"chat_id": int(uid), "text": text, "reply_markup": kb})
+
+def _ban_from_group(uid: str):
+    if not TG_API or SUPPORT_GROUP_ID is None:
+        return
+    _botapi("banChatMember", {"chat_id": SUPPORT_GROUP_ID, "user_id": int(uid)})
+
+def _unban_in_group(uid: str):
+    if not TG_API or SUPPORT_GROUP_ID is None:
+        return
+    # unban снимает бан, чтобы пользователь смог присоединиться заново по ссылке
+    _botapi("unbanChatMember", {"chat_id": SUPPORT_GROUP_ID, "user_id": int(uid)})
 
 # === DB Connection ===
 def _db_connect():
@@ -533,8 +581,19 @@ async def tiptoppay_webhook(
                 plan = _extract_plan(payload)
                 valid_until = _compute_valid_until(payload)
                 upsert_sub(uid, status="active", plan=plan, valid_until=valid_until)
+                # выдать доступ: снять бан (если был) и отправить ссылку-приглашение
+                try:
+                    _unban_in_group(uid)
+                    _dm_invite(uid)
+                except Exception:
+                    pass
             else:
                 clear_sub(uid)
+                # забрать доступ: кикнуть (ban) из группы
+                try:
+                    _ban_from_group(uid)
+                except Exception:
+                    pass
             try:
                 print(f"[tiptoppay_webhook] upsert_sub uid={uid} -> status={new_status}, plan={plan}, valid_until={valid_until}")
             except Exception:

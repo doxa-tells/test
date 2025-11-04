@@ -108,6 +108,12 @@ async def handler(event):
         text = (getattr(msg, 'message', '') or getattr(msg, 'text', '') or getattr(msg, 'raw_text', ''))
         sender = await event.get_chat()
         sender_name = getattr(sender, 'title', 'Источник неизвестен')
+        # дата исходного сообщения
+        try:
+            src_dt = getattr(msg, 'date', None)
+            src_dt_str = src_dt.astimezone().strftime('%d.%m.%Y %H:%M') if src_dt else ''
+        except Exception:
+            src_dt_str = ''
         print(f"\n📅 Новое сообщение из: {sender_name}")
         if text:
             print(f"📝 {text[:200]}{'...' if len(text) > 200 else ''}")
@@ -166,7 +172,10 @@ async def handler(event):
 
         # форматирование
         formatted = await format_casting_template(text, image_path)
-        quote_html = f"<blockquote>Источник (Telegram): {sender_name}</blockquote>"
+        if src_dt_str:
+            quote_html = f"<blockquote>Источник (Telegram): {sender_name} • {src_dt_str}</blockquote>"
+        else:
+            quote_html = f"<blockquote>Источник (Telegram): {sender_name}</blockquote>"
         final_message = f"{formatted}\n\n{quote_html}"
 
         # отправка в целевой чат/тред через Bot API

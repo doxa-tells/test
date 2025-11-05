@@ -1,15 +1,56 @@
 // web/catalog/components/ActorCard.tsx
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import type { Actor } from "../lib/types";
 import { photoUrl } from "../lib/media";
 
 export default function ActorCard({ a }: { a: Actor }) {
   const mainSrc = photoUrl(a.user_id, 1);
+  const [liked, setLiked] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(false);
+
+  useEffect(() => {
+    let alive = true;
+    fetch(`/api/favorites?actor=${a.user_id}`).then(async (r) => {
+      if (r.status === 401) return; // not logged in
+      const d = await r.json();
+      if (alive && d.ok) setLiked(!!d.liked);
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, [a.user_id]);
+
+  async function toggleFavorite(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (loading) return;
+    setLoading(true);
+    try {
+      if (!liked) {
+        const r = await fetch(`/api/favorites`, { method: 'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ actor_user_id: a.user_id }) });
+        if (r.status === 401) { location.href = '/login'; return; }
+        const d = await r.json();
+        if (d.ok) setLiked(true);
+      } else {
+        const r = await fetch(`/api/favorites?actor=${a.user_id}`, { method: 'DELETE' });
+        if (r.status === 401) { location.href = '/login'; return; }
+        const d = await r.json();
+        if (d.ok) setLiked(false);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
-    <a href={`/actor/${a.user_id}`} className="card" title={a.full_name ?? ""}>
+    <a href={`/actor/${a.user_id}`} className="card" title={a.full_name ?? ""} style={{position:'relative'}}>
+      <button
+        aria-label={liked?"Удалить из избранного":"В избранное"}
+        onClick={toggleFavorite}
+        className="btn"
+        style={{position:'absolute', right:10, top:10, padding:'6px 8px'}}>
+        {liked ? '❤' : '♡'}
+      </button>
       <img
         className="thumb"
         src={mainSrc}

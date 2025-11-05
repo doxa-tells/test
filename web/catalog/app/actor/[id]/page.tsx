@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { getActorById, type Actor } from "../../../lib/db";
 import Gallery from "../../../components/Gallery";
+import ActorActions from "../../../components/ActorActions";
 
 export const dynamic = "force-dynamic";
 
@@ -46,6 +47,8 @@ export default async function ActorPage({ params }: { params: { id: string } }) 
       </h1>
 
       <Gallery userId={a.user_id} name={a.full_name || "Актёр"} />
+
+      <ActorActions actorUserId={a.user_id} instagram={a.instagram} />
 
       <table className="table">
         <tbody>

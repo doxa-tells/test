@@ -1069,9 +1069,18 @@ async def build_apply_button_dict(uid: int, ad_text: str) -> dict:
     if not u:
         return { "text": "✅ Откликнуться", "callback_data": "apply_unavailable" }
 
+    def _cap_text(s: str, limit: int = 900) -> str:
+        try:
+            s = (s or "").strip()
+            if len(s) <= limit:
+                return s
+            return s[: max(0, limit - 1) ] + "…"
+        except Exception:
+            return (s or "")
+
     # ✉️ e-mail -> открываем нашу мини-аппу /apply
     if contact.get("type") == "email":
-        msg = _build_apply_text(u, ad_text, reduce_for_email=True)
+        msg = _cap_text(_build_apply_text(u, ad_text, reduce_for_email=True))
         url = build_apply_webapp_url(
             APPLY_WEBAPP_URL,
             uid=uid,
@@ -1084,19 +1093,19 @@ async def build_apply_button_dict(uid: int, ad_text: str) -> dict:
 
     # 💬 WhatsApp
     if contact.get("type") == "wa":
-        msg = _build_apply_text(u, ad_text)
+        msg = _cap_text(_build_apply_text(u, ad_text))
         enc = up.quote(msg)
         return { "text": "✅ Откликнуться", "url": f"https://wa.me/{contact['phone']}?text={enc}" }
 
     # 🤝 Telegram username
     if contact.get("type") == "tg":
-        msg = _build_apply_text(u, ad_text)
+        msg = _cap_text(_build_apply_text(u, ad_text))
         enc = up.quote(msg)
         user_link = f"https://t.me/{contact['username']}"
         return { "text": "✅ Откликнуться", "url": f"https://t.me/share/url?url={up.quote(user_link)}&text={enc}" }
 
     # Fallback — просто текст для поделиться
-    msg = _build_apply_text(u, ad_text)
+    msg = _cap_text(_build_apply_text(u, ad_text))
     enc = up.quote(msg)
     return { "text": "✅ Откликнуться", "url": f"https://t.me/share/url?text={enc}" }
 

@@ -164,3 +164,189 @@ export function photoUrl(userId: number, n: 1 | 2 | 3 | 4) {
   return `/media/${userId}/photo/${n}`;
 }
 
+// === App-specific helpers for auth, profile and castings ===
+export type AuthUser = { id: number; email: string; created_at: string };
+export type Company = { id: number; user_id: number; name: string; role: string | null };
+export type Casting = { id: number; user_id: number; title: string; description: string | null; created_at: string };
+
+/** Create tables if not exist */
+export async function ensureTables() {
+  await query(`
+    CREATE TABLE IF NOT EXISTS users_auth (
+      id SERIAL PRIMARY KEY,
+      email TEXT UNIQUE NOT NULL,
+      pass_hash TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS sessions (
+      id UUID PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users_auth(id) ON DELETE CASCADE,
+      expires_at TIMESTAMPTZ NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS companies (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users_auth(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      role TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      , UNIQUE(user_id, name)
+    );
+
+    CREATE TABLE IF NOT EXISTS castings (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users_auth(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      description TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS casting_files (
+      id SERIAL PRIMARY KEY,
+      casting_id INTEGER NOT NULL REFERENCES castings(id) ON DELETE CASCADE,
+      filename TEXT NOT NULL,
+      filetype TEXT,
+      url TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS casting_likes (
+      id SERIAL PRIMARY KEY,
+      casting_id INTEGER NOT NULL REFERENCES castings(id) ON DELETE CASCADE,
+      actor_user_id INTEGER NOT NULL,
+      decision TEXT NOT NULL CHECK (decision IN ('like','skip')),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(casting_id, actor_user_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS favorites (
+      user_id INTEGER NOT NULL REFERENCES users_auth(id) ON DELETE CASCADE,
+      actor_user_id INTEGER NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (user_id, actor_user_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS casting_sends (
+      id SERIAL PRIMARY KEY,
+      casting_id INTEGER NOT NULL REFERENCES castings(id) ON DELETE CASCADE,
+      actor_user_id INTEGER NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(casting_id, actor_user_id)
+    );
+  `);
+}
+
+export async function getUserByEmail(email: string): Promise<(AuthUser & { pass_hash: string }) | undefined> {
+  const rows = await query(`SELECT id, email, pass_hash, created_at FROM users_auth WHERE email = $1`, [email]);
+  return rows[0];
+}
+
+export async function createUser(email: string, pass_hash: string): Promise<AuthUser> {
+  const rows = await query(
+    `INSERT INTO users_auth(email, pass_hash) VALUES ($1,$2) RETURNING id, email, created_at`,
+    [email, pass_hash]
+  );
+  return rows[0];
+}
+
+export async function upsertCompany(user_id: number, name: string, role: string | null) {
+  const rows = await query(
+    `INSERT INTO companies(user_id, name, role)
+     VALUES ($1,$2,$3)
+     ON CONFLICT (user_id, name) DO UPDATE SET role = EXCLUDED.role
+     RETURNING id, user_id, name, role`,
+    [user_id, name, role]
+  );
+  return rows[0];
+}
+
+export async function createCasting(user_id: number, title: string, description: string | null) {
+  const rows = await query(
+    `INSERT INTO castings(user_id, title, description) VALUES ($1,$2,$3) RETURNING id, user_id, title, description, created_at`,
+    [user_id, title, description]
+  );
+  return rows[0] as Casting;
+}
+
+export async function listMyCastings(user_id: number) {
+  return query(`SELECT id, user_id, title, description, created_at FROM castings WHERE user_id=$1 ORDER BY created_at DESC`, [user_id]);
+}
+
+export async function getCasting(casting_id: number, user_id: number) {
+  const rows = await query(`SELECT id, user_id, title, description, created_at FROM castings WHERE id=$1 AND user_id=$2`, [casting_id, user_id]);
+  return rows[0] as Casting | undefined;
+}
+
+export async function recordDecision(casting_id: number, actor_user_id: number, decision: 'like'|'skip') {
+  await query(
+    `INSERT INTO casting_likes(casting_id, actor_user_id, decision)
+     VALUES ($1,$2,$3)
+     ON CONFLICT (casting_id, actor_user_id) DO UPDATE SET decision = EXCLUDED.decision`,
+    [casting_id, actor_user_id, decision]
+  );
+}
+
+// Sessions
+export async function createSession(id: string, user_id: number, expiresAtISO: string) {
+  await query(`INSERT INTO sessions(id, user_id, expires_at) VALUES ($1,$2,$3)`, [id, user_id, expiresAtISO]);
+}
+
+export async function getSessionUser(sessionId: string): Promise<AuthUser | undefined> {
+  const rows = await query(
+    `SELECT u.id, u.email, u.created_at
+     FROM sessions s JOIN users_auth u ON u.id = s.user_id
+     WHERE s.id = $1 AND s.expires_at > NOW()`,
+    [sessionId]
+  );
+  return rows[0];
+}
+
+export async function destroySession(sessionId: string) {
+  await query(`DELETE FROM sessions WHERE id=$1`, [sessionId]);
+}
+
+export async function listCastingFiles(casting_id: number) {
+  return query(
+    `SELECT id, filename, filetype, url, created_at FROM casting_files WHERE casting_id=$1 ORDER BY created_at DESC`,
+    [casting_id]
+  );
+}
+
+// === Favorites helpers ===
+export async function addFavorite(user_id: number, actor_user_id: number) {
+  await query(`INSERT INTO favorites(user_id, actor_user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [user_id, actor_user_id]);
+}
+
+export async function removeFavorite(user_id: number, actor_user_id: number) {
+  await query(`DELETE FROM favorites WHERE user_id=$1 AND actor_user_id=$2`, [user_id, actor_user_id]);
+}
+
+export async function listFavoriteActors(user_id: number): Promise<Actor[]> {
+  const rows = await query(
+    `SELECT u.user_id, u.full_name, u.sex, u.age_range, u.look_type, u.body_type,
+            u.height_cm, u.weight_kg, u.hair_color, u.hair_type, u.eye_color,
+            u.cities, u.languages, u.instagram, u.video_vizitka, u.showreel, u.portfolio, u.projects,
+            u.skills, u.updated_at
+     FROM favorites f JOIN users u ON u.user_id = f.actor_user_id
+     WHERE f.user_id = $1
+     ORDER BY f.created_at DESC`,
+    [user_id]
+  );
+  return rows as Actor[];
+}
+
+export async function isFavorite(user_id: number, actor_user_id: number): Promise<boolean> {
+  const rows = await query(`SELECT 1 FROM favorites WHERE user_id=$1 AND actor_user_id=$2`, [user_id, actor_user_id]);
+  return !!rows[0];
+}
+
+// === Casting sends ===
+export async function sendCastingToActor(casting_id: number, actor_user_id: number) {
+  await query(
+    `INSERT INTO casting_sends(casting_id, actor_user_id) VALUES ($1,$2)
+     ON CONFLICT (casting_id, actor_user_id) DO NOTHING`,
+    [casting_id, actor_user_id]
+  );
+}
+

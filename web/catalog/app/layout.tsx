@@ -24,6 +24,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
               <Link className="muted" href="/partners">Партнёры</Link>
               <Link className="muted" href="/about">О нас</Link>
               <Link className="muted" href="/favorites">Моя подборка</Link>
+              <Link className="muted" href="/my-castings">Мои кастинги</Link>
+              <Link className="muted" href="/login">Войти</Link>
             </nav>
           </header>
 

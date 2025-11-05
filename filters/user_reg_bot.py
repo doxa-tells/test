@@ -740,6 +740,12 @@ async def botapi_send_message(chat_id: int, text: str, reply_markup: dict) -> Op
     Отправляет сообщение через Bot API.
     Возвращает message_id при успехе, иначе None.
     """
+    try:
+        import json as _json
+        _rm_size = len(_json.dumps(reply_markup, ensure_ascii=False))
+        print(f"[botapi_send_message] reply_markup size: {_rm_size} bytes")
+    except Exception:
+        pass
     payload = {
         "chat_id": chat_id,
         "text": text,

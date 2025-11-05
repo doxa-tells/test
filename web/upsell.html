@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Roletapp AI — Тариф и апгрейд</title>
-  <meta name="description" content="Roletapp AI — апгрейд подписки. Узнайте текущий план, сравните тарифы и подключите Премиум." />
+  <meta name="description" content="Roletapp AI — апгрейд подписки. Узнайте текущий план, сравните тарифы и подключите Профессионал." />
   <style>
     @keyframes float { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-8px); } }
     @keyframes shimmer { 0% { background-position: -1000px 0; } 100% { background-position: 1000px 0; } }
@@ -77,7 +77,7 @@
     .pricingCard.has-locked{ padding-bottom:10px; }
     @media (min-width:760px){ .pricingCard{padding:28px} }
     .pricingCard:nth-child(1){animation-delay:.3s; opacity:.75;}
-    .pricingCard:nth-child(2){animation-delay:.4s; border:1.5px solid rgba(97,228,181,.4); opacity:.75;}
+    .pricingCard:nth-child(2){animation-delay:.4s; opacity:.75;}
     .pricingCard:nth-child(3){animation-delay:.5s; transform:scale(1.08); border:2px solid rgba(97,228,181,.6); box-shadow:0 0 40px rgba(97,228,181,.3), 0 0 80px rgba(122,168,255,.2), inset 0 0 40px rgba(97,228,181,.1);}
     @media (min-width:1025px){ .pricingCard:nth-child(3){grid-column:auto; grid-row:auto;} }
     .pricingCard:nth-child(3) .btn{box-shadow:0 0 40px rgba(97,228,181,.4), 0 0 80px rgba(122,168,255,.25), inset 0 0 20px rgba(97,228,181,.1);}
@@ -87,7 +87,7 @@
     .price{font-size:42px;font-weight:900; background:linear-gradient(135deg, #61E4B5, #7AA8FF); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;}
     .strike{color:#7ea1ff80;text-decoration:line-through;font-size:14px}
     .bullet{display:flex;gap:12px;align-items:flex-start;margin:12px 0;color:#dbe6ff; transition:all .3s;}
-    .bullet span:first-child{color:var(--accent, #61E4B5); font-weight:bold; flex-shrink:0;}
+    .bullet span:first-child{color:var(--accent, #5DE4B5); font-weight:bold; flex-shrink:0;}
     .pricingCard:hover .bullet{transform:translateX(4px);}
     .note{color:#a9b6dd; font-size:13px; line-height:1.5;}
     .muted{color:#a9b6dd}
@@ -97,6 +97,19 @@
     
     .pricingCard .blurme{filter:blur(1px); opacity:.8; transition:filter .3s, opacity .3s;}
     .pricingCard:hover .blurme{filter:blur(0); opacity:1;}
+
+    /* Less blur for Standard plan */
+    .pricingCard.theme-standard .blurme{ filter:blur(.5px); opacity:.9; }
+
+    /* Teaser: hide tail of content for first two cards (smooth) */
+    .teaserObscure{ position:relative; overflow:hidden; max-height:148px; padding-bottom:18px; }
+    .teaserObscure::after{ content:""; position:absolute; left:0; right:0; bottom:0; height:68px;
+      background:linear-gradient(to bottom, rgba(16,24,56,0) 0%, rgba(16,24,56,.55) 55%, rgba(16,24,56,.92) 100%);
+      pointer-events:none; border-bottom-left-radius: inherit; border-bottom-right-radius: inherit;
+    }
+    /* additionally soften lower bullets */
+    .teaserObscure .bullet:nth-child(n+4) .t{ filter:blur(.4px); opacity:.9; }
+    @media (min-width:760px){ .teaserObscure{ max-height:165px; padding-bottom:20px; } .teaserObscure::after{ height:76px; } }
 
     /* Locked footer overlay for Free & Standard */
     .lockedFooter{ position:absolute; left:0; right:0; bottom:0; height:100px; display:flex; align-items:center; justify-content:center; gap:10px; pointer-events:none;
@@ -114,33 +127,36 @@
     .pricingCard.theme-free{ --accent:#7AA8FF; --accent2:#B494FF; }
     .pricingCard.theme-standard{ --accent:#61E4B5; --accent2:#7AA8FF; }
     /* Premium: negative scheme -> background green/cyan, text blue */
-    .pricingCard.theme-premium{ --accent:#6EA8FF; /* blue for text */ --accent2:#3E65FF; /* deeper blue */ }
+    .pricingCard.theme-premium{ --accent:#6EA8FF; /* blue for text */ --accent2:#2F4EE8; /* deeper blue */ }
 
     .pricingCard.theme-free{ border-color: color-mix(in oklab, var(--accent) 45%, transparent); box-shadow:0 8px 30px color-mix(in oklab, var(--accent) 25%, transparent); opacity:.85; filter:saturate(.9) brightness(.95); }
     .pricingCard.theme-standard{ border-color: color-mix(in oklab, var(--accent) 55%, transparent); box-shadow:0 10px 40px color-mix(in oklab, var(--accent) 30%, transparent); opacity:.85; filter:saturate(.95) brightness(.98); }
+    /* Make Standard look like Free card (no extra green border from nth-child(2)) */
+    .grid .pricingCard.theme-standard.has-locked{ border:1px solid rgba(122,168,255,.2); box-shadow:0 8px 30px color-mix(in oklab, var(--accent) 25%, transparent); filter:saturate(.9) brightness(.95); }
     .pricingCard.theme-premium{ 
-      /* green-cyan luminous background feel (max) */
-      background:linear-gradient(135deg, rgba(25,227,166,.52), rgba(122,232,255,.36));
-      border-color: color-mix(in oklab, #19E3A6 85%, transparent);
+      /* extra soft green background, keep blue text */
+      background:linear-gradient(135deg, rgba(25,227,166,.32), rgba(80,190,176,.16));
+      border-color: color-mix(in oklab, #19E3A6 60%, transparent);
       box-shadow:
-        0 32px 130px color-mix(in oklab, #19E3A6 64%, transparent),
-        0 0 170px color-mix(in oklab, #7AE7FF 58%, transparent) inset,
-        0 0 0 4px color-mix(in oklab, #6EA8FF 55%, transparent);
-      transform:scale(1.17); opacity:1; filter:saturate(1.3) brightness(1.1);
+        0 18px 70px color-mix(in oklab, #19E3A6 35%, transparent),
+        0 0 90px color-mix(in oklab, #7AE7FF 34%, transparent) inset,
+        0 0 0 3px color-mix(in oklab, #2F4EE8 45%, transparent);
+      transform:scale(1.18); opacity:1; filter:saturate(1.1) brightness(1.02);
     }
 
     .pricingCard.theme-free .price{ background:linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; color:transparent; }
     .pricingCard.theme-standard .price{ background:linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; color:transparent; }
-    .pricingCard.theme-premium .price{ background:linear-gradient(135deg, #A6C8FF, #2F4EE8); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; color:transparent; }
-    .pricingCard.theme-premium h3, .pricingCard.theme-premium .t, .pricingCard.theme-premium .note{ color:#e6f0ff; }
+    .pricingCard.theme-premium .price{ background:linear-gradient(135deg, #84AFFF, #2F4EE8); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; color:transparent; }
+    .pricingCard.theme-premium h3, .pricingCard.theme-premium .t, .pricingCard.theme-premium .note{ color:#FFF; }
+    .pricingCard.theme-premium .bullet span:first-child{ color:#64DDB2; }
 
     .pricingCard.theme-free::before{ background:linear-gradient(135deg, color-mix(in oklab, var(--accent) 12%, transparent), color-mix(in oklab, var(--accent2) 12%, transparent)); }
     .pricingCard.theme-standard::before{ background:linear-gradient(135deg, color-mix(in oklab, var(--accent) 14%, transparent), color-mix(in oklab, var(--accent2) 14%, transparent)); }
     .pricingCard.theme-premium::before{ background:linear-gradient(135deg, color-mix(in oklab, #19E3A6 48%, transparent), color-mix(in oklab, #7AE7FF 48%, transparent)); }
 
-    .pricingCard.theme-premium .btn{ background:linear-gradient(135deg, #B5D3FF, #2F4EE8); box-shadow:0 0 110px color-mix(in oklab, #19E3A6 72%, transparent), 0 0 170px color-mix(in oklab, #7AE7FF 65%, transparent), inset 0 0 34px color-mix(in oklab, #6EA8FF 42%, transparent); color:#071225; border:2px solid color-mix(in oklab, #6EA8FF 58%, transparent); }
+    .pricingCard.theme-premium .btn{ background:linear-gradient(135deg, #B5D3FF, #2F4EE8); box-shadow:0 0 120px color-mix(in oklab, #19E3A6 78%, transparent), 0 0 190px color-mix(in oklab, #7AE7FF 68%, transparent), inset 0 0 38px color-mix(in oklab, #6EA8FF 46%, transparent); color:#071225; border:2px solid color-mix(in oklab, #6EA8FF 62%, transparent); }
     .pricingCard.theme-premium .price{ font-size:56px; }
-    .pricingCard.theme-premium::after{ content:''; position:absolute; top:-40px; right:-30px; width:220px; height:220px; border-radius:50%; background:radial-gradient( circle at 30% 30%, color-mix(in oklab, #19E3A6 70%, transparent) 0%, transparent 60% ); filter:blur(8px); opacity:.55; pointer-events:none; }
+    .pricingCard.theme-premium::after{ content:''; position:absolute; top:-40px; right:-30px; width:240px; height:240px; border-radius:50%; background:radial-gradient( circle at 30% 30%, color-mix(in oklab, #19E3A6 78%, transparent) 0%, transparent 60% ); filter:blur(8px); opacity:.6; pointer-events:none; }
   </style>
 </head>
 <body>
@@ -163,9 +179,15 @@
       <div class="pricingCard theme-free has-locked">
         <h3 style="margin-top:0">Тариф: <span style="color: var(--halo)">Бесплатно</span></h3>
         <div class="price">0 ₸</div>
-        <div class="bullet"><span>•</span><span class="t">Размещение Вашей анкеты в базе актёров/моделей Caster AI</span></div>
-        <div class="bullet blurme"><span>•</span><span class="t">Видимость для кастинг‑директоров и агентств (Salem Entertainment, Freedom Media, Unico Play, Tiger Films, PVE)</span></div>
-        <div class="note blurme" style="margin-top:8px">Если вам важно просто быть в базе. Для активного поиска ролей — Стандарт или Премиум.</div>
+        <div class="teaserObscure">
+          <div class="bullet"><span>•</span><span class="t">Размещение Вашей анкеты в базе актёров/моделей Caster AI</span></div>
+          <div class="bullet"><span>•</span><span class="t">Видимость для кастинг‑директоров и агентств (Salem Entertainment, Freedom Media, Unico Play, Tiger Films, PVE)</span></div>
+          <div class="bullet"><span>•</span><span class="t">Сборка кастингов из 30+ WA/TG чатов в одном месте</span></div>
+          <div class="bullet"><span>•</span><span class="t">Автоподбор объявлений по вашему индивидуальному профилю</span></div>
+          <div class="bullet"><span>•</span><span class="t">Моментальное уведомление о появлении подходящего кастинга</span></div>
+          <div class="bullet"><span>•</span><span class="t">Отклик на кастинг в 1 клик, как в Тиндер)</span></div>
+          <div class="note" style="margin-top:8px">Если вам важно просто быть в базе. Для активного поиска ролей — Стандарт или Профессионал.</div>
+        </div>
         <div class="lockedFooter"></div>
       </div>
 
@@ -174,17 +196,21 @@
           <h3 style="margin-top:0">Тариф: <span style="color: var(--halo)">Стандарт</span></h3>
         </div>
         <div class="price">3 490 ₸/мес</div>
-        <div class="bullet"><span>•</span><span class="t">Сборка кастингов из 30+ WA/TG чатов в одном месте</span></div>
-        <div class="bullet"><span>•</span><span class="t">Автоподбор объявлений по вашему индивидуальному профилю</span></div>
-        <div class="bullet blurme"><span>•</span><span class="t">Моментальное уведомление о появлении подходящего кастинга</span></div>
-        <div class="bullet blurme"><span>•</span><span class="t">Отклик на кастинг в 1 клик, как в Тиндер)</span></div>
-        <div class="note blurme" style="margin-top:8px">Пробный месяц — 30 ₸, далее 3 490 ₸/мес</div>
-        <div class="lockedFooter"><span class="lock">🔒</span></div>
+        <div class="teaserObscure">
+          <div class="bullet"><span>•</span><span class="t">Размещение Вашей анкеты в базе актёров/моделей Caster AI</span></div>
+          <div class="bullet"><span>•</span><span class="t">Видимость для кастинг‑директоров и агентств (Salem Entertainment, Freedom Media, Unico Play, Tiger Films, PVE)</span></div>
+          <div class="bullet"><span>•</span><span class="t">Сборка кастингов из 30+ WA/TG чатов в одном месте</span></div>
+          <div class="bullet"><span>•</span><span class="t">Автоподбор объявлений по вашему индивидуальному профилю</span></div>
+          <div class="bullet"><span>•</span><span class="t">Моментальное уведомление о появлении подходящего кастинга</span></div>
+          <div class="bullet"><span>•</span><span class="t">Отклик на кастинг в 1 клик, как в Тиндер)</span></div>
+          <div class="note" style="margin-top:8px">Пробный месяц — 30 ₸, далее 3 490 ₸/мес</div>
+        </div>
+        <div class="lockedFooter"></div>
         <div class="cta"><a class="btn" id="ctaStandard" href="#">Подключить</a></div>
       </div>
 
-      <div class="pricingCard">
-        <h3 style="margin-top:0">Тариф: <span style="color: var(--halo)">Премиум</span> <span class="muted" id="noteCurrentPlanPremium" style="margin-left:8px"></span></h3>
+      <div class="pricingCard theme-premium">
+        <h3 style="margin-top:0">Тариф: <span style="color: var(--halo)">Профессионал</span> <span class="muted" id="noteCurrentPlanPremium" style="margin-left:8px"></span></h3>
         <div class="price">4 490 ₸/мес</div>
         <div class="bullet"><span>•</span><span class="t">Сборка кастингов из 30+ WA/TG чатов в одном месте</span></div>
         <div class="bullet"><span>•</span><span class="t">Автоподбор объявлений по вашему индивидуальному профилю</span></div>
@@ -212,7 +238,7 @@
       const page = (params.get('page') || '').toLowerCase().trim();
 
       function planTitle(p){
-        if(p === 'premium') return 'Премиум';
+        if(p === 'premium') return 'Профессионал';
         if(p === 'standard' || p === 'pro' || p === 'basic') return 'Стандарт';
         if(p === '' || p == null) return 'Без подписки';
         return p;

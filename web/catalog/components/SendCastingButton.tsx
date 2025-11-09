@@ -15,7 +15,12 @@ export default function SendCastingButton({ actorUserId }: { actorUserId: number
   }
 
   useEffect(() => {
-    if (open) loadCastings();
+    if (open) {
+      loadCastings();
+      const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+      window.addEventListener('keydown', onKey);
+      return () => window.removeEventListener('keydown', onKey);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -34,13 +39,13 @@ export default function SendCastingButton({ actorUserId }: { actorUserId: number
     <>
       <button className="btn" onClick={() => setOpen(true)}>Отправить кастинг</button>
       {open && (
-        <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,.6)', display:'grid', placeItems:'center', zIndex:50}} onClick={()=>setOpen(false)}>
-          <div className="card" style={{minWidth:320, maxWidth:520}} onClick={(e)=>e.stopPropagation()}>
-            <div className="cardBody">
+        <div className="overlay" onClick={()=>setOpen(false)}>
+          <div className="modal" onClick={(e)=>e.stopPropagation()}>
+            <div className="modalBody">
               <div className="h2" style={{marginBottom:10}}>Выберите кастинг</div>
               {sent && <div className="p" style={{color:'#10a37f'}}>{sent}</div>}
               {castings.length === 0 ? (
-                <div>
+                <div className="section">
                   <p className="p">У вас пока нет кастингов.</p>
                   <a className="btn" href="/my-castings">Создать</a>
                 </div>
@@ -55,7 +60,7 @@ export default function SendCastingButton({ actorUserId }: { actorUserId: number
               )}
               <hr className="hr" />
               <div className="row" style={{justifyContent:'flex-end'}}>
-                <button className="btn" onClick={()=>setOpen(false)}>Закрыть</button>
+                <button className="btn btn--ghost" onClick={()=>setOpen(false)}>Закрыть</button>
               </div>
             </div>
           </div>

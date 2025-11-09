@@ -17,6 +17,53 @@ function getPool() {
     return pool;
 }
 
+export type CastingPrefs = {
+  role_title?: string | null;
+  project?: string | null;
+  city?: string | null;
+  sex?: string | null;
+  look_type?: string | null;
+  body_type?: string | null;
+  hair_color?: string | null;
+  eye_color?: string | null;
+  lang?: string | null;
+  height_min?: number | null;
+  height_max?: number | null;
+  age_from?: number | null;
+  age_to?: number | null;
+  notes?: string | null;
+  requirements?: string | null;
+};
+
+export async function getCastingPrefs(casting_id: number): Promise<CastingPrefs | null> {
+  const rows = await query(
+    `SELECT role_title, project, city, sex, look_type, body_type, hair_color, eye_color, lang,
+            height_min, height_max, age_from, age_to, notes, requirements
+     FROM casting_prefs WHERE casting_id=$1`, [casting_id]
+  );
+  return rows[0] || null;
+}
+
+export async function saveCastingPrefs(casting_id: number, p: CastingPrefs) {
+  await query(
+    `INSERT INTO casting_prefs(casting_id, role_title, project, city, sex, look_type, body_type, hair_color, eye_color, lang, height_min, height_max, age_from, age_to, notes, requirements, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,NOW())
+     ON CONFLICT (casting_id) DO UPDATE SET
+       role_title=EXCLUDED.role_title, project=EXCLUDED.project, city=EXCLUDED.city,
+       sex=EXCLUDED.sex, look_type=EXCLUDED.look_type, body_type=EXCLUDED.body_type,
+       hair_color=EXCLUDED.hair_color, eye_color=EXCLUDED.eye_color, lang=EXCLUDED.lang,
+       height_min=EXCLUDED.height_min, height_max=EXCLUDED.height_max,
+       age_from=EXCLUDED.age_from, age_to=EXCLUDED.age_to,
+       notes=EXCLUDED.notes, requirements=EXCLUDED.requirements,
+       updated_at=NOW()`,
+    [casting_id, p.role_title ?? null, p.project ?? null, p.city ?? null, p.sex ?? null, p.look_type ?? null, p.body_type ?? null, p.hair_color ?? null, p.eye_color ?? null, p.lang ?? null, p.height_min ?? null, p.height_max ?? null, p.age_from ?? null, p.age_to ?? null, p.notes ?? null, p.requirements ?? null]
+  );
+}
+
+export async function updateCastingBasic(casting_id: number, user_id: number, title: string, description: string | null) {
+  await query(`UPDATE castings SET title=$1, description=$2 WHERE id=$3 AND user_id=$4`, [title, description, casting_id, user_id]);
+}
+
 export async function query(sql: string, params: any[] = []) {
     const pool = getPool();
     const client = await pool.connect();
@@ -234,6 +281,42 @@ export async function ensureTables() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       UNIQUE(casting_id, actor_user_id)
     );
+
+    CREATE TABLE IF NOT EXISTS user_prefs (
+      user_id INTEGER PRIMARY KEY REFERENCES users_auth(id) ON DELETE CASCADE,
+      sex TEXT,
+      city TEXT,
+      look_type TEXT,
+      body_type TEXT,
+      hair_color TEXT,
+      eye_color TEXT,
+      lang TEXT,
+      height_min INTEGER,
+      height_max INTEGER,
+      age_from INTEGER,
+      age_to INTEGER,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS casting_prefs (
+      casting_id INTEGER PRIMARY KEY REFERENCES castings(id) ON DELETE CASCADE,
+      role_title TEXT,
+      project TEXT,
+      city TEXT,
+      sex TEXT,
+      look_type TEXT,
+      body_type TEXT,
+      hair_color TEXT,
+      eye_color TEXT,
+      lang TEXT,
+      height_min INTEGER,
+      height_max INTEGER,
+      age_from INTEGER,
+      age_to INTEGER,
+      notes TEXT,
+      requirements TEXT,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
   `);
 }
 
@@ -347,6 +430,38 @@ export async function sendCastingToActor(casting_id: number, actor_user_id: numb
     `INSERT INTO casting_sends(casting_id, actor_user_id) VALUES ($1,$2)
      ON CONFLICT (casting_id, actor_user_id) DO NOTHING`,
     [casting_id, actor_user_id]
+  );
+}
+
+export type UserPrefs = {
+  sex?: string | null;
+  city?: string | null;
+  look_type?: string | null;
+  body_type?: string | null;
+  hair_color?: string | null;
+  eye_color?: string | null;
+  lang?: string | null;
+  height_min?: number | null;
+  height_max?: number | null;
+  age_from?: number | null;
+  age_to?: number | null;
+};
+
+export async function getUserPrefs(user_id: number): Promise<UserPrefs | null> {
+  const rows = await query(`SELECT sex, city, look_type, body_type, hair_color, eye_color, lang, height_min, height_max, age_from, age_to FROM user_prefs WHERE user_id=$1`, [user_id]);
+  return rows[0] || null;
+}
+
+export async function saveUserPrefs(user_id: number, p: UserPrefs) {
+  await query(
+    `INSERT INTO user_prefs(user_id, sex, city, look_type, body_type, hair_color, eye_color, lang, height_min, height_max, age_from, age_to, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW())
+     ON CONFLICT (user_id) DO UPDATE SET
+       sex=EXCLUDED.sex, city=EXCLUDED.city, look_type=EXCLUDED.look_type, body_type=EXCLUDED.body_type,
+       hair_color=EXCLUDED.hair_color, eye_color=EXCLUDED.eye_color, lang=EXCLUDED.lang,
+       height_min=EXCLUDED.height_min, height_max=EXCLUDED.height_max, age_from=EXCLUDED.age_from, age_to=EXCLUDED.age_to,
+       updated_at=NOW()`,
+    [user_id, p.sex ?? null, p.city ?? null, p.look_type ?? null, p.body_type ?? null, p.hair_color ?? null, p.eye_color ?? null, p.lang ?? null, p.height_min ?? null, p.height_max ?? null, p.age_from ?? null, p.age_to ?? null]
   );
 }
 

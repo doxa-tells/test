@@ -31,23 +31,28 @@ declare namespace __next_route_internal_types__ {
   type StaticRoutes = 
     | `/`
     | `/about`
-    | `/favorites`
-    | `/login`
     | `/api/auth/login`
-    | `/api/auth/register`
     | `/api/auth/logout`
-    | `/api/castings`
+    | `/api/auth/register`
     | `/api/favorites`
+    | `/api/castings`
+    | `/api/prefs`
+    | `/feed`
     | `/api/public-actors`
     | `/api/send-casting`
     | `/api/upload`
+    | `/favorites`
+    | `/login`
     | `/my-castings`
-    | `/register`
     | `/partners`
+    | `/register`
+    | `/settings`
   type DynamicRoutes<T extends string = string> = 
     | `/actor/${SafeSlug<T>}`
     | `/api/castings/${SafeSlug<T>}/decision`
+    | `/api/castings/${SafeSlug<T>}/prefs`
     | `/api/castings/${SafeSlug<T>}/files`
+    | `/feed/${SafeSlug<T>}`
     | `/media/${SafeSlug<T>}/photo/${SafeSlug<T>}`
     | `/my-castings/${SafeSlug<T>}`
 

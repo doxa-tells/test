@@ -18,15 +18,20 @@ export default function LoginPage() {
   }
 
   return (
-    <div>
-      <h1 className="h1">Войти</h1>
-      <form onSubmit={onSubmit} className="grid" style={{maxWidth:480}}>
-        <input className="input" name="email" placeholder="Email" type="email" required />
-        <input className="input" name="password" placeholder="Пароль" type="password" required />
-        {error && <div className="p" style={{color:'#ff6b6b'}}>{error}</div>}
-        <button className="btn" disabled={loading}>{loading?"Загрузка...":"Войти"}</button>
-        <a className="muted" href="/register">Создать аккаунт</a>
-      </form>
+    <div style={{minHeight:'70vh', display:'grid', placeItems:'center'}}>
+      <div className="card" style={{minWidth:320, maxWidth:480}}>
+        <div className="cardBody">
+          <h1 className="h1" style={{marginBottom:6}}>Войти</h1>
+          <p className="p" style={{marginBottom:12}}>Доступ к управлению кастингами и лентой</p>
+          <form onSubmit={onSubmit} className="grid1">
+            <input className="input" name="email" placeholder="Email" type="email" required />
+            <input className="input" name="password" placeholder="Пароль" type="password" required />
+            {error && <div className="p" style={{color:'#ff6b6b'}}>{error}</div>}
+            <button className="btn" disabled={loading}>{loading?"Загрузка...":"Войти"}</button>
+            <a className="btn btn--ghost" href="/register">Создать аккаунт</a>
+          </form>
+        </div>
+      </div>
     </div>
   );
 }

@@ -249,14 +249,14 @@ def store_match(
     con.close()
     return match_id
 
-def purge_old_matches(days: int = 7) -> int:
-    """Удаляет матчи старше `days` дней. Возвращает количество удалённых строк."""
+def purge_old_matches(hours: int = 84) -> int:
+    """Удаляет матчи старше `hours` часов (по умолчанию 3.5 суток). Возвращает количество удалённых строк."""
     con = _connect()
     cur = con.cursor()
     _ensure_matches_table(cur)
     cur.execute(
-        "DELETE FROM matches WHERE created_at < NOW() - INTERVAL '%s days'",
-        (int(days),),
+        "DELETE FROM matches WHERE created_at < NOW() - INTERVAL '%s hours'",
+        (int(hours),),
     )
     deleted = cur.rowcount
     con.commit()
@@ -265,13 +265,13 @@ def purge_old_matches(days: int = 7) -> int:
 
 def get_user_matches(uid: int, limit: int = 50) -> List[Dict[str, Any]]:
     """
-    Возвращает свежие (<=7 дней) матчи пользователя, самые новые сначала.
+    Возвращает свежие (<=3.5 дней) матчи пользователя, самые новые сначала.
     """
     con = _connect()
     cur = con.cursor()
     _ensure_matches_table(cur)
-    # подчистим просроченные
-    cur.execute("DELETE FROM matches WHERE created_at < NOW() - INTERVAL '7 days'")
+    # подчистим просроченные (3.5 дня)
+    cur.execute("DELETE FROM matches WHERE created_at < NOW() - INTERVAL '3.5 days'")
     con.commit()
 
     cur.execute(

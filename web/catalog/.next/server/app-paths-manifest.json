@@ -1,16 +1,12 @@
 {
-  "/api/favorites/route": "app/api/favorites/route.js",
-  "/my-castings/page": "app/my-castings/page.js",
   "/page": "app/page.js",
   "/media/[userId]/photo/[n]/route": "app/media/[userId]/photo/[n]/route.js",
-  "/actor/[id]/page": "app/actor/[id]/page.js",
-  "/favorites/page": "app/favorites/page.js",
-  "/api/send-casting/route": "app/api/send-casting/route.js",
-  "/api/auth/login/route": "app/api/auth/login/route.js",
-  "/my-castings/[id]/page": "app/my-castings/[id]/page.js",
-  "/api/castings/route": "app/api/castings/route.js",
-  "/login/page": "app/login/page.js",
-  "/api/castings/[id]/files/route": "app/api/castings/[id]/files/route.js",
+  "/api/favorites/route": "app/api/favorites/route.js",
+  "/my-castings/page": "app/my-castings/page.js",
+  "/feed/page": "app/feed/page.js",
+  "/feed/[id]/page": "app/feed/[id]/page.js",
   "/api/public-actors/route": "app/api/public-actors/route.js",
-  "/api/castings/[id]/decision/route": "app/api/castings/[id]/decision/route.js"
+  "/favorites/page": "app/favorites/page.js",
+  "/settings/page": "app/settings/page.js",
+  "/api/prefs/route": "app/api/prefs/route.js"
 }

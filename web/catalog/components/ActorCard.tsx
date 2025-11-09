@@ -29,12 +29,14 @@ export default function ActorCard({ a }: { a: Actor }) {
       if (!liked) {
         const r = await fetch(`/api/favorites`, { method: 'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ actor_user_id: a.user_id }) });
         if (r.status === 401) { location.href = '/login'; return; }
-        const d = await r.json();
+        let d: any = { ok: false };
+        try { d = await r.json(); } catch {}
         if (d.ok) setLiked(true);
       } else {
         const r = await fetch(`/api/favorites?actor=${a.user_id}`, { method: 'DELETE' });
         if (r.status === 401) { location.href = '/login'; return; }
-        const d = await r.json();
+        let d: any = { ok: false };
+        try { d = await r.json(); } catch {}
         if (d.ok) setLiked(false);
       }
     } finally {
@@ -43,12 +45,11 @@ export default function ActorCard({ a }: { a: Actor }) {
   }
 
   return (
-    <a href={`/actor/${a.user_id}`} className="card" title={a.full_name ?? ""} style={{position:'relative'}}>
+    <a href={`/actor/${a.user_id}`} className="card rel" title={a.full_name ?? ""}>
       <button
         aria-label={liked?"Удалить из избранного":"В избранное"}
         onClick={toggleFavorite}
-        className="btn"
-        style={{position:'absolute', right:10, top:10, padding:'6px 8px'}}>
+        className={`iconBtn absTR ${liked ? 'iconBtn--active' : ''}`}>
         {liked ? '❤' : '♡'}
       </button>
       <img

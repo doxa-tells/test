@@ -1,9 +1,9 @@
 {
   "pages": {
-    "/my-castings/page": [
+    "/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/my-castings/page.js"
+      "static/chunks/app/page.js"
     ],
     "/layout": [
       "static/chunks/webpack.js",
@@ -11,30 +11,30 @@
       "static/css/app/layout.css",
       "static/chunks/app/layout.js"
     ],
-    "/page": [
+    "/my-castings/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/page.js"
+      "static/chunks/app/my-castings/page.js"
     ],
-    "/actor/[id]/page": [
+    "/feed/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/actor/[id]/page.js"
+      "static/chunks/app/feed/page.js"
     ],
-    "/login/page": [
+    "/feed/[id]/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/login/page.js"
+      "static/chunks/app/feed/[id]/page.js"
     ],
     "/favorites/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/favorites/page.js"
     ],
-    "/my-castings/[id]/page": [
+    "/settings/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/my-castings/[id]/page.js"
+      "static/chunks/app/settings/page.js"
     ]
   }
 }

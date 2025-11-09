@@ -1,12 +1,1 @@
-{
-  "/page": "app/page.js",
-  "/media/[userId]/photo/[n]/route": "app/media/[userId]/photo/[n]/route.js",
-  "/api/favorites/route": "app/api/favorites/route.js",
-  "/my-castings/page": "app/my-castings/page.js",
-  "/feed/page": "app/feed/page.js",
-  "/feed/[id]/page": "app/feed/[id]/page.js",
-  "/api/public-actors/route": "app/api/public-actors/route.js",
-  "/favorites/page": "app/favorites/page.js",
-  "/settings/page": "app/settings/page.js",
-  "/api/prefs/route": "app/api/prefs/route.js"
-}
+{}

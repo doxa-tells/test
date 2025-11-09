@@ -9,7 +9,11 @@ export default function FeedCastingPage({ params }: { params: { id: string } }) 
   const cardRef = useRef<HTMLDivElement|null>(null);
 
   useEffect(() => {
-    fetch(`/api/public-actors?limit=100`).then(r => r.json()).then(d => setActors(d.items || []));
+    fetch(`/api/castings/${castingId}/actors`).then(async (r) => {
+      if (r.status === 401) { location.href = '/login'; return; }
+      const d = await r.json();
+      setActors(d.items || []);
+    });
   }, []);
 
   const a = actors[i];
@@ -42,22 +46,24 @@ export default function FeedCastingPage({ params }: { params: { id: string } }) 
   }, [a]);
 
   return (
-    <div>
-      <div className="row space">
-        <h1 className="h1">Моя лента · Кастинг #{castingId}</h1>
+    <div style={{maxWidth:900, margin:'0 auto'}}>
+      <div className="row" style={{justifyContent:'center'}}>
+        <h1 className="h1" style={{textAlign:'center'}}>Моя лента · Кастинг #{castingId}</h1>
+      </div>
+      <div className="row" style={{justifyContent:'center', marginTop:8}}>
         <a className="btn btn--ghost" href="/feed">Назад к ленте</a>
       </div>
       <hr className="hr" />
 
       {!a ? (
-        <p className="p">Актёры закончились.</p>
+        <p className="p" style={{textAlign:'center'}}>Актёры закончились.</p>
       ) : (
-        <div className="card cardInteractive" style={{maxWidth:420}} ref={cardRef}>
+        <div className="card cardInteractive" style={{maxWidth:420, margin:'0 auto'}} ref={cardRef}>
           <img className="thumb" src={`/media/${a.user_id}/photo/1`} alt={a.full_name || ''} />
           <div className="cardBody">
-            <div className="h2">{a.full_name}</div>
-            <p className="p">{[a.sex, a.age_range, a.cities].filter(Boolean).join(" · ")}</p>
-            <div className="row" style={{marginTop:10}}>
+            <div className="h2" style={{textAlign:'center'}}>{a.full_name}</div>
+            <p className="p" style={{textAlign:'center'}}>{[a.sex, a.age_range, a.cities].filter(Boolean).join(" · ")}</p>
+            <div className="row" style={{marginTop:10, justifyContent:'center', gap:8}}>
               <button className="btn" onClick={() => decide('like')}>👍 Нравится</button>
               <button className="btn btn--secondary" onClick={() => decide('skip')}>Пропустить</button>
             </div>
@@ -67,3 +73,4 @@ export default function FeedCastingPage({ params }: { params: { id: string } }) 
     </div>
   );
 }
+

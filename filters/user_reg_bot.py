@@ -348,13 +348,13 @@ def purge_old_matches(con=None):
     if con is None:
         con = _db_connect(); own = True
     with con.cursor() as cur:
-        cur.execute("DELETE FROM matches WHERE created_at < NOW() - INTERVAL '3.5 days'")
+        cur.execute("DELETE FROM matches WHERE created_at < NOW() - INTERVAL '7 days'")
         deleted = cur.rowcount
     if own:
         con.commit(); con.close()
     return deleted
 
-async def a_purge_old_matches(hours: int = 84) -> int:
+async def a_purge_old_matches(hours: int = 168) -> int:
     pool = await _ensure_pg_pool()
     async with pool.acquire() as con:
         cmd = await con.execute(
@@ -387,7 +387,7 @@ def get_user_matches(uid: int):
 async def a_get_user_matches(uid: int, limit: int = 1000) -> list[dict]:
     pool = await _ensure_pg_pool()
     async with pool.acquire() as con:
-        await con.execute("DELETE FROM matches WHERE created_at < NOW() - INTERVAL '3.5 days'")
+        await con.execute("DELETE FROM matches WHERE created_at < NOW() - INTERVAL '7 days'")
         rows = await con.fetch(
             "SELECT * FROM matches WHERE user_id=$1 ORDER BY created_at DESC, id DESC LIMIT $2",
             int(uid), int(limit)

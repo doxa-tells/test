@@ -34,13 +34,13 @@ declare namespace __next_route_internal_types__ {
     | `/api/auth/login`
     | `/api/auth/logout`
     | `/api/auth/register`
-    | `/api/favorites`
     | `/api/castings`
+    | `/api/favorites`
     | `/api/prefs`
-    | `/feed`
-    | `/api/public-actors`
     | `/api/send-casting`
+    | `/api/public-actors`
     | `/api/upload`
+    | `/feed`
     | `/favorites`
     | `/login`
     | `/my-castings`
@@ -49,9 +49,10 @@ declare namespace __next_route_internal_types__ {
     | `/settings`
   type DynamicRoutes<T extends string = string> = 
     | `/actor/${SafeSlug<T>}`
+    | `/api/castings/${SafeSlug<T>}/actors`
     | `/api/castings/${SafeSlug<T>}/decision`
-    | `/api/castings/${SafeSlug<T>}/prefs`
     | `/api/castings/${SafeSlug<T>}/files`
+    | `/api/castings/${SafeSlug<T>}/prefs`
     | `/feed/${SafeSlug<T>}`
     | `/media/${SafeSlug<T>}/photo/${SafeSlug<T>}`
     | `/my-castings/${SafeSlug<T>}`

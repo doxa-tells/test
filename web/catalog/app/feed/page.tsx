@@ -9,10 +9,12 @@ export default async function FeedIndexPage() {
   const user = await currentUser();
   if (!user) {
     return (
-      <div>
-        <h1 className="h1">Моя лента</h1>
-        <p className="p">Войдите, чтобы просматривать ленту свайпов по вашим кастингам.</p>
-        <a className="btn" href="/login">Войти</a>
+      <div style={{maxWidth:900, margin:'0 auto'}}>
+        <h1 className="h1" style={{textAlign:'center'}}>Моя лента</h1>
+        <p className="p" style={{textAlign:'center'}}>Войдите, чтобы просматривать ленту свайпов по вашим кастингам.</p>
+        <div className="row" style={{justifyContent:'center'}}>
+          <a className="btn" href="/login">Войти</a>
+        </div>
       </div>
     );
   }
@@ -20,17 +22,19 @@ export default async function FeedIndexPage() {
   const items = await listMyCastings(user.id);
 
   return (
-    <div>
-      <div className="row space">
-        <h1 className="h1">Моя лента</h1>
+    <div style={{maxWidth:1000, margin:'0 auto'}}>
+      <div className="row" style={{justifyContent:'center'}}>
+        <h1 className="h1" style={{textAlign:'center'}}>Моя лента</h1>
+      </div>
+      <div className="row" style={{justifyContent:'center', marginTop:8}}>
         <a className="btn" href="/my-castings">Управление кастингами</a>
       </div>
       <hr className="hr" />
 
       {items.length === 0 ? (
-        <p className="p">Пока нет кастингов. Создайте кастинг и вернитесь сюда для свайпов.</p>
+        <p className="p" style={{textAlign:'center'}}>Пока нет кастингов. Создайте кастинг и вернитесь сюда для свайпов.</p>
       ) : (
-        <div className="grid">
+        <div className="grid" style={{gridTemplateColumns:'1fr 1fr', gap:12}}>
           {items.map((c: any) => (
             <a key={c.id} href={`/feed/${c.id}`} className="card">
               <div className="cardBody">
@@ -44,3 +48,4 @@ export default async function FeedIndexPage() {
     </div>
   );
 }
+

@@ -1,6 +1,6 @@
 // web/catalog/app/layout.tsx
 export const metadata = {
-  title: process.env.SITE_NAME || "Roletapp AI by PVE",
+  title: process.env.SITE_NAME || "CasterAI",
   description: "Каталог актёров для кастинг-директоров",
 };
 
@@ -11,7 +11,7 @@ import type { ReactNode } from "react";
 import { currentUser } from "../lib/auth";
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
-  const site = process.env.SITE_NAME || "Roletapp AI by PVE";
+  const site = process.env.SITE_NAME || "CasterAI";
   const user = await currentUser();
   return (
     <html lang="ru">
@@ -27,7 +27,6 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
               <Link className="muted" href="/partners">Партнёры</Link>
               <Link className="muted" href="/about">О нас</Link>
               <Link className="muted" href="/favorites">Моя подборка</Link>
-              <Link className="muted" href="/feed">Моя лента</Link>
               <Link className="muted" href="/my-castings">Мои кастинги</Link>
               {user ? (
                 <Link className="muted" href="/settings">Настройки</Link>

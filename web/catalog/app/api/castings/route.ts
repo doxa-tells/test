@@ -48,6 +48,8 @@ export async function POST(req: Request) {
       height_max: num('height_max'),
       age_from: num('age_from'),
       age_to: num('age_to'),
+      weight_min: num('weight_min'),
+      weight_max: num('weight_max'),
       notes: val('notes'),
       requirements: val('requirements'),
     });
@@ -63,16 +65,15 @@ export async function POST(req: Request) {
       await mkdir(dir, { recursive: true });
       for (const f of files) {
         const ab = await (f as any).arrayBuffer();
-        const buf = Buffer.from(ab);
         const filename = `${Date.now()}_${(f as any).name}`;
         const filepath = join(dir, filename);
-        await writeFile(filepath, buf);
+        await writeFile(filepath, new Uint8Array(ab));
         const url = `/uploads/${user.id}/${filename}`;
         await query(`INSERT INTO casting_files(casting_id, filename, filetype, url) VALUES ($1,$2,$3,$4)`, [c.id, (f as any).name, (f as any).type || null, url]);
       }
     }
     const BASE = process.env.NEXT_PUBLIC_BASE_PATH || '/catalog';
-    return NextResponse.redirect(new URL(`${BASE}/my-castings/${c.id}`, req.url));
+    return NextResponse.redirect(new URL(`${BASE}/my-castings`, req.url));
   }
   // fallback JSON body
   const body = await req.json().catch(()=>({} as any));
@@ -96,6 +97,8 @@ export async function POST(req: Request) {
     height_max: (typeof p.height_max === 'number') ? p.height_max : null,
     age_from: (typeof p.age_from === 'number') ? p.age_from : null,
     age_to: (typeof p.age_to === 'number') ? p.age_to : null,
+    weight_min: (typeof p.weight_min === 'number') ? p.weight_min : null,
+    weight_max: (typeof p.weight_max === 'number') ? p.weight_max : null,
     notes: p.notes ?? null,
     requirements: p.requirements ?? null,
   });

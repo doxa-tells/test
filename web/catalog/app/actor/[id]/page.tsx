@@ -12,8 +12,8 @@ function Row({ k, v }: { k: string; v?: ReactNode }) {
   if (v === undefined || v === null || v === "") return null;
   return (
     <tr>
-      <td>{k}</td>
-      <td>{v}</td>
+      <td style={{ textAlign: 'center' }}>{k}</td>
+      <td style={{ textAlign: 'center' }}>{v}</td>
     </tr>
   );
 }
@@ -42,35 +42,41 @@ export default async function ActorPage({ params }: { params: { id: string } }) 
       <Link className="btn" href="/">
         ← Назад
       </Link>
-      <h1 className="h1" style={{ marginTop: 12 }}>
-        {a.full_name}
-      </h1>
+      <h1 className="h1" style={{ marginTop: 12 }}>{a.full_name}</h1>
 
-      <Gallery userId={a.user_id} name={a.full_name || "Актёр"} />
-
-      <ActorActions actorUserId={a.user_id} instagram={a.instagram} />
-
-      <table className="table">
-        <tbody>
-          <Row k="Пол" v={a.sex} />
-          <Row k="Игровой возраст" v={a.age_range} />
-          <Row k="Города" v={a.cities} />
-          <Row k="Типаж" v={a.look_type} />
-          <Row k="Телосложение" v={a.body_type} />
-          <Row k="Рост" v={a.height_cm} />
-          <Row k="Вес" v={a.weight_kg} />
-          <Row k="Цвет волос" v={a.hair_color} />
-          <Row k="Тип волос" v={a.hair_type} />
-          <Row k="Цвет глаз" v={a.eye_color} />
-          <Row k="Языки" v={a.languages} />
-          <Row k="Instagram" v={asLink(a.instagram)} />
-          <Row k="Видеовизитка" v={asLink(a.video_vizitka)} />
-          <Row k="Шоурил" v={asLink(a.showreel)} />
-          <Row k="Портфолио" v={asLink(a.portfolio)} />
-          <Row k="Проекты" v={a.projects} />
-          <Row k="Навыки" v={a.skills} />
-        </tbody>
-      </table>
+      <section style={{display:'grid', gridTemplateColumns:'minmax(280px, 380px) 1fr', gap:24, alignItems:'start'}}>
+        <div>
+          <Gallery userId={a.user_id} name={a.full_name || "Актёр"} />
+        </div>
+        <div>
+          <div className="card" style={{padding:16, marginBottom:16}}>
+            <ActorActions actorUserId={a.user_id} instagram={a.instagram} />
+          </div>
+          <div className="card" style={{padding:0, overflow:'hidden'}}>
+            <table className="table" style={{margin:0}}>
+              <tbody>
+                <Row k="Пол" v={a.sex} />
+                <Row k="Игровой возраст" v={a.age_range} />
+                <Row k="Города" v={a.cities} />
+                <Row k="Типаж" v={a.look_type} />
+                <Row k="Телосложение" v={a.body_type} />
+                <Row k="Рост" v={a.height_cm} />
+                <Row k="Вес" v={a.weight_kg} />
+                <Row k="Цвет волос" v={a.hair_color} />
+                <Row k="Тип волос" v={a.hair_type} />
+                <Row k="Цвет глаз" v={a.eye_color} />
+                <Row k="Языки" v={a.languages} />
+                <Row k="Instagram" v={asLink(a.instagram)} />
+                <Row k="Видеовизитка" v={asLink(a.video_vizitka)} />
+                <Row k="Шоурил" v={asLink(a.showreel)} />
+                <Row k="Портфолио" v={asLink(a.portfolio)} />
+                <Row k="Проекты" v={a.projects} />
+                <Row k="Навыки" v={a.skills} />
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
     </>
   );
 }

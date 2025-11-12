@@ -34,14 +34,15 @@ export default function ActorActions({ actorUserId, instagram }: { actorUserId: 
   }
 
   const instaHref = instagram ? (/^(https?:)?\/\//i.test(instagram) ? instagram : `https://${instagram}`) : undefined;
+  const btnStyle: React.CSSProperties = { minHeight: 40, padding: '10px 14px', fontWeight: 500, lineHeight: 1.2 };
 
   return (
-    <div className="row" style={{marginTop:12, gap:8}}>
+    <div className="row" style={{marginTop:12, gap:8, justifyContent:'center', flexWrap:'wrap'}}>
       {instaHref && (
-        <a className="btn" href={instaHref} target="_blank" rel="noopener noreferrer">Написать актёру</a>
+        <a className="btn" style={btnStyle} href={instaHref} target="_blank" rel="noopener noreferrer">Написать актёру</a>
       )}
-      <SendCastingButton actorUserId={actorUserId} />
-      <button className="btn" onClick={toggleFav}>{liked ? '❤ В избранном' : '♡ В избранное'}</button>
+      <SendCastingButton actorUserId={actorUserId} buttonClassName="btn" buttonStyle={btnStyle} />
+      <button className="btn" style={btnStyle} onClick={toggleFav} disabled={loading}>{liked ? '❤ В избранном' : '♡ В избранное'}</button>
     </div>
   );
 }

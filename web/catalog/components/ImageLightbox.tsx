@@ -10,6 +10,7 @@ export default function ImageLightbox({
   onClose,
   onPrev,
   onNext,
+  onDownloadAll,
 }: {
   srcs: string[];
   altBase: string;
@@ -17,6 +18,7 @@ export default function ImageLightbox({
   onClose: () => void;
   onPrev: () => void;
   onNext: () => void;
+  onDownloadAll?: () => void;
 }) {
   const onKey = useCallback(
     (e: KeyboardEvent) => {
@@ -56,6 +58,11 @@ export default function ImageLightbox({
           <a className="btn" href={src} download>
             Скачать
           </a>
+          {onDownloadAll && (
+            <button className="btn" type="button" onClick={onDownloadAll} style={{marginLeft:8}}>
+              Скачать все
+            </button>
+          )}
         </div>
       </div>
       <style jsx>{`

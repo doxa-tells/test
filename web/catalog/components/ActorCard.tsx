@@ -5,6 +5,7 @@ import React, { useEffect, useState } from "react";
 import type { Actor } from "../lib/types";
 import { photoUrl } from "../lib/media";
 import { api, bp } from "../lib/http";
+import SendCastingButton from "./SendCastingButton";
 
 export default function ActorCard({ a }: { a: Actor }) {
   const mainSrc = photoUrl(a.user_id, 1);
@@ -47,12 +48,15 @@ export default function ActorCard({ a }: { a: Actor }) {
 
   return (
     <a href={bp(`/actor/${a.user_id}`)} className="card rel" title={a.full_name ?? ""}>
-      <button
-        aria-label={liked?"Удалить из избранного":"В избранное"}
-        onClick={toggleFavorite}
-        className={`iconBtn absTR ${liked ? 'iconBtn--active' : ''}`}>
-        {liked ? '❤' : '♡'}
-      </button>
+      <div className="row absTR" style={{gap:6}}>
+        <SendCastingButton actorUserId={a.user_id} buttonClassName="iconBtn" label="↗" />
+        <button
+          aria-label={liked?"Удалить из избранного":"В избранное"}
+          onClick={toggleFavorite}
+          className={`iconBtn ${liked ? 'iconBtn--active' : ''}`}>
+          {liked ? '❤' : '♡'}
+        </button>
+      </div>
       <img
         className="thumb"
         src={mainSrc}

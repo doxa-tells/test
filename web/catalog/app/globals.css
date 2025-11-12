@@ -37,13 +37,16 @@ a{color:inherit; text-decoration:none}
 .kv{display:flex; flex-wrap:wrap; gap:8px; margin-top:8px}
 .kv span{padding:6px 8px; font-size:12px; border:1px solid var(--border); border-radius:8px; color:#d7dbe0; background:#0f1114}
 
-.footer{opacity:.7; margin-top:28px; font-size:12px}
+.footer{opacity:.7; margin-top:28px; font-size:12px; text-align:center}
 .btn{
   display:inline-flex; align-items:center; justify-content:center; gap:8px;
   padding:10px 12px; background:var(--accent); color:#06110d; font-weight:800; border-radius:10px; border:none;
 }
 .btn:hover{ filter:brightness(1.05) }
 .btn:disabled{ opacity:.6; cursor:not-allowed }
+.btnGroup{ display:flex; gap:8px; flex-wrap:wrap }
+.btn--danger{ background:#c24141; color:#fff }
+.btn--danger:hover{ filter:brightness(1.05) }
 .btn--ghost{
   background:transparent; color:#dfe4ea; border:1px solid var(--border);
 }
@@ -65,13 +68,38 @@ a{color:inherit; text-decoration:none}
 
 /* === Cards & Sections === */
 .section{ margin:18px 0 }
+.modalBody .section{ margin:12px 0 }
 .sectionTitle{ font-size:16px; font-weight:700; margin:0 0 8px }
 .tag{ padding:6px 8px; font-size:12px; border:1px solid var(--border); border-radius:8px; color:#d7dbe0; background:#0f1114 }
 
 /* === Modal === */
 .overlay{ position:fixed; inset:0; background:rgba(0,0,0,.6); display:grid; place-items:center; z-index:50 }
-.modal{ background:var(--card); border:1px solid var(--border); border-radius:14px; min-width:320px; max-width:560px; overflow:hidden }
-.modalBody{ padding:16px }
+.modal{ background:var(--card); border:1px solid var(--border); border-radius:14px; min-width:320px; width:min(920px,96vw); max-height:90vh; overflow:hidden; display:flex; flex-direction:column }
+.modalHeader{ position:sticky; top:0; background:var(--card); border-bottom:1px solid var(--border); padding:12px 16px }
+.modalBody{ padding:16px; overflow:auto; flex:1 }
+.modalFooter{ position:sticky; bottom:0; background:var(--card); border-top:1px solid var(--border); padding:12px 16px; display:flex; justify-content:flex-end; gap:8px }
+
+/* Tabs inside modal header */
+.tabs{ display:flex; gap:8px; margin-top:8px; flex-wrap:wrap }
+.tab{ padding:6px 10px; border:1px solid var(--border); border-radius:999px; background:#0f1114; color:#dfe4ea; font-weight:700; font-size:12px }
+.tab:hover{ border-color:var(--accent) }
+
+/* Stepper */
+.stepper{ display:flex; gap:10px; flex-wrap:wrap; margin-top:8px }
+.step{ display:flex; align-items:center; gap:8px; padding:6px 10px; border:1px solid var(--border); border-radius:999px; background:#0f1114; color:#9aa0a6; font-weight:700; font-size:12px }
+.stepNum{ width:20px; height:20px; display:grid; place-items:center; border-radius:50%; border:1px solid var(--border); background:#0d0f12; color:#9aa0a6; font-weight:800; font-size:12px }
+.step--active{ color:#dfe4ea; border-color:var(--accent) }
+.step--active .stepNum{ border-color:var(--accent); color:#06110d; background:var(--accent) }
+.step--done{ color:#dfe4ea; border-color:var(--accent); background:#0f1a16 }
+.step--done .stepNum{ border-color:transparent; color:#06110d; background:var(--accent) }
+
+/* Accordion (details/summary) */
+.acc{ border:1px solid var(--border); border-radius:12px; background:#0f1114; }
+.acc + .acc{ margin-top:10px }
+.acc > summary{ list-style:none; cursor:pointer; padding:10px 12px; font-weight:700; color:var(--fg); display:flex; align-items:center; justify-content:space-between }
+.acc > summary::-webkit-details-marker{ display:none }
+.acc[open] > summary{ border-bottom:1px solid var(--border) }
+.acc .accBody{ padding:12px }
 
 /* === Utils === */
 .absTR{ position:absolute; right:10px; top:10px }
@@ -94,3 +122,41 @@ a{color:inherit; text-decoration:none}
 }
 .input::placeholder{ color:#6b7280 }
 .num{ text-align:center }
+
+/* === My Castings === */
+.castBtn{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 14px; border:1px solid var(--border); border-radius:12px; background:var(--card); text-decoration:none; color:var(--fg); transition:all .15s ease }
+.castBtn:hover{ border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset }
+.castTitle{ font-weight:700; color:var(--fg) }
+.castDesc{ color:var(--muted); font-size:12px }
+.castActions{ display:flex; gap:8px }
+.plusFull{ width:100%; display:block; margin-top:16px; padding:14px; border:2px dashed var(--accent); border-radius:12px; background:var(--card); color:var(--fg); text-align:center; font-weight:700; transition:all .15s ease }
+.plusFull:hover{ box-shadow:0 0 0 2px var(--accent) inset }
+.row2{ display:grid; gap:10px; grid-template-columns: 1fr 1fr }
+@media (max-width: 640px){ .row2{ grid-template-columns: 1fr } }
+.toggleOpt{ display:inline-block; padding:8px 12px; border:1px solid var(--border); border-radius:10px; background:#0f1114; color:var(--fg); font-weight:500; transition:all .15s ease }
+label:hover .toggleOpt{ filter:brightness(1.05) }
+label > input[type="radio"]{ position:absolute; opacity:0; pointer-events:none }
+label > input[type="radio"]:checked + .toggleOpt{ background:var(--accent); color:#06110d; border-color:transparent }
+
+/* Chip groups (radio buttons) */
+.chipGroup{ display:flex; gap:10px; flex-wrap:wrap; margin:8px 0 }
+.chipGroup label{ display:inline-flex }
+
+/* Grouped rows inside modal sections */
+.groupRow{ display:grid; grid-template-columns: 120px 1fr; gap:12px; align-items:center; }
+.groupTitle{ text-align:left; color:var(--muted); font-weight:800; font-size:12px; text-transform:uppercase; letter-spacing:.02em }
+.groupRow > :nth-child(2){ padding-left:0; border-left:0 }
+.groupRow + .groupRow{ border-top:1px solid var(--border); padding-top:10px; margin-top:10px }
+
+@media (max-width: 640px){
+  .groupRow{ grid-template-columns: 1fr; align-items:flex-start }
+  .groupTitle{ text-align:left; padding-bottom:6px }
+  .groupRow > :nth-child(2){ padding-left:0; border-left:0 }
+}
+
+/* Dropzone */
+.dropzone{ border:2px dashed var(--border); background:#0f1114; color:#dfe4ea; border-radius:12px; padding:20px; text-align:center; cursor:pointer; transition:all .15s ease; width:100%; display:grid; place-items:center; min-height:120px }
+.dropzone:hover{ border-color:var(--accent); box-shadow:0 0 0 2px var(--accent) inset }
+.dropzone .dzIcon{ width:36px; height:36px; border-radius:10px; display:inline-grid; place-items:center; background:var(--accent); color:#06110d; margin:0 auto 10px; font-weight:900; font-size:18px }
+.dzFiles{ display:flex; gap:6px; flex-wrap:wrap; margin-top:8px }
+.dzFile{ font-size:12px; color:#9aa0a6; padding:4px 6px; border:1px solid var(--border); border-radius:8px; background:#0d0f12 }

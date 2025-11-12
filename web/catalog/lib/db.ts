@@ -31,6 +31,8 @@ export type CastingPrefs = {
   height_max?: number | null;
   age_from?: number | null;
   age_to?: number | null;
+  weight_min?: number | null;
+  weight_max?: number | null;
   notes?: string | null;
   requirements?: string | null;
 };
@@ -38,7 +40,7 @@ export type CastingPrefs = {
 export async function getCastingPrefs(casting_id: number): Promise<CastingPrefs | null> {
   const rows = await query(
     `SELECT role_title, project, city, sex, look_type, body_type, hair_color, eye_color, lang,
-            height_min, height_max, age_from, age_to, notes, requirements
+            height_min, height_max, age_from, age_to, weight_min, weight_max, notes, requirements
      FROM casting_prefs WHERE casting_id=$1`, [casting_id]
   );
   return rows[0] || null;
@@ -46,17 +48,18 @@ export async function getCastingPrefs(casting_id: number): Promise<CastingPrefs 
 
 export async function saveCastingPrefs(casting_id: number, p: CastingPrefs) {
   await query(
-    `INSERT INTO casting_prefs(casting_id, role_title, project, city, sex, look_type, body_type, hair_color, eye_color, lang, height_min, height_max, age_from, age_to, notes, requirements, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,NOW())
+    `INSERT INTO casting_prefs(casting_id, role_title, project, city, sex, look_type, body_type, hair_color, eye_color, lang, height_min, height_max, age_from, age_to, weight_min, weight_max, notes, requirements, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,NOW())
      ON CONFLICT (casting_id) DO UPDATE SET
        role_title=EXCLUDED.role_title, project=EXCLUDED.project, city=EXCLUDED.city,
        sex=EXCLUDED.sex, look_type=EXCLUDED.look_type, body_type=EXCLUDED.body_type,
        hair_color=EXCLUDED.hair_color, eye_color=EXCLUDED.eye_color, lang=EXCLUDED.lang,
        height_min=EXCLUDED.height_min, height_max=EXCLUDED.height_max,
        age_from=EXCLUDED.age_from, age_to=EXCLUDED.age_to,
+       weight_min=EXCLUDED.weight_min, weight_max=EXCLUDED.weight_max,
        notes=EXCLUDED.notes, requirements=EXCLUDED.requirements,
        updated_at=NOW()`,
-    [casting_id, p.role_title ?? null, p.project ?? null, p.city ?? null, p.sex ?? null, p.look_type ?? null, p.body_type ?? null, p.hair_color ?? null, p.eye_color ?? null, p.lang ?? null, p.height_min ?? null, p.height_max ?? null, p.age_from ?? null, p.age_to ?? null, p.notes ?? null, p.requirements ?? null]
+    [casting_id, p.role_title ?? null, p.project ?? null, p.city ?? null, p.sex ?? null, p.look_type ?? null, p.body_type ?? null, p.hair_color ?? null, p.eye_color ?? null, p.lang ?? null, p.height_min ?? null, p.height_max ?? null, p.age_from ?? null, p.age_to ?? null, p.weight_min ?? null, p.weight_max ?? null, p.notes ?? null, p.requirements ?? null]
   );
 }
 
@@ -282,6 +285,21 @@ export async function ensureTables() {
       UNIQUE(casting_id, actor_user_id)
     );
 
+    CREATE TABLE IF NOT EXISTS casting_auditions (
+      id SERIAL PRIMARY KEY,
+      casting_id INTEGER NOT NULL REFERENCES castings(id) ON DELETE CASCADE,
+      actor_user_id BIGINT NOT NULL,
+      filename TEXT NOT NULL,
+      url TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS user_actor_link (
+      auth_user_id INTEGER PRIMARY KEY REFERENCES users_auth(id) ON DELETE CASCADE,
+      actor_user_id BIGINT NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
     CREATE TABLE IF NOT EXISTS user_prefs (
       user_id INTEGER PRIMARY KEY REFERENCES users_auth(id) ON DELETE CASCADE,
       sex TEXT,
@@ -313,9 +331,30 @@ export async function ensureTables() {
       height_max INTEGER,
       age_from INTEGER,
       age_to INTEGER,
+      weight_min INTEGER,
+      weight_max INTEGER,
       notes TEXT,
       requirements TEXT,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS user_projects (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users_auth(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      role TEXT,
+      description TEXT,
+      media_url TEXT,
+      media_type TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE TABLE IF NOT EXISTS user_project_media (
+      id SERIAL PRIMARY KEY,
+      project_id INTEGER NOT NULL REFERENCES user_projects(id) ON DELETE CASCADE,
+      url TEXT NOT NULL,
+      media_type TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
 
@@ -344,6 +383,22 @@ export async function ensureTables() {
       WHERE table_name='casting_sends' AND column_name='actor_user_id' AND data_type='integer'
     ) THEN
       ALTER TABLE casting_sends ALTER COLUMN actor_user_id TYPE BIGINT;
+    END IF;
+  END $$;`);
+
+  // Add weight columns to casting_prefs if they are missing
+  await query(`DO $$ BEGIN
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_name='casting_prefs' AND column_name='weight_min'
+    ) THEN
+      ALTER TABLE casting_prefs ADD COLUMN weight_min INTEGER;
+    END IF;
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_name='casting_prefs' AND column_name='weight_max'
+    ) THEN
+      ALTER TABLE casting_prefs ADD COLUMN weight_max INTEGER;
     END IF;
   END $$;`);
 }
@@ -384,8 +439,20 @@ export async function listMyCastings(user_id: number) {
   return query(`SELECT id, user_id, title, description, created_at FROM castings WHERE user_id=$1 ORDER BY created_at DESC`, [user_id]);
 }
 
+export async function listAllCastings(limit = 100, offset = 0) {
+  return query(
+    `SELECT id, user_id, title, description, created_at FROM castings ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
+    [limit, offset]
+  );
+}
+
 export async function getCasting(casting_id: number, user_id: number) {
   const rows = await query(`SELECT id, user_id, title, description, created_at FROM castings WHERE id=$1 AND user_id=$2`, [casting_id, user_id]);
+  return rows[0] as Casting | undefined;
+}
+
+export async function getCastingPublic(casting_id: number) {
+  const rows = await query(`SELECT id, user_id, title, description, created_at FROM castings WHERE id=$1`, [casting_id]);
   return rows[0] as Casting | undefined;
 }
 
@@ -424,6 +491,34 @@ export async function listCastingFiles(casting_id: number) {
   );
 }
 
+export async function addCastingAudition(casting_id: number, actor_user_id: number, filename: string, url: string) {
+  await query(
+    `INSERT INTO casting_auditions(casting_id, actor_user_id, filename, url) VALUES ($1,$2,$3,$4)`,
+    [casting_id, actor_user_id, filename, url]
+  );
+}
+
+export async function listCastingAuditions(casting_id: number) {
+  return query(
+    `SELECT id, casting_id, actor_user_id, filename, url, created_at FROM casting_auditions WHERE casting_id=$1 ORDER BY created_at DESC`,
+    [casting_id]
+  );
+}
+
+export async function getLinkedActorUserId(auth_user_id: number): Promise<number | null> {
+  const rows = await query(`SELECT actor_user_id FROM user_actor_link WHERE auth_user_id=$1`, [auth_user_id]);
+  return rows[0]?.actor_user_id ?? null;
+}
+
+export async function setLinkedActorUserId(auth_user_id: number, actor_user_id: number) {
+  await query(
+    `INSERT INTO user_actor_link(auth_user_id, actor_user_id, updated_at)
+     VALUES ($1,$2,NOW())
+     ON CONFLICT (auth_user_id) DO UPDATE SET actor_user_id=EXCLUDED.actor_user_id, updated_at=NOW()`,
+    [auth_user_id, actor_user_id]
+  );
+}
+
 // === Favorites helpers ===
 export async function addFavorite(user_id: number, actor_user_id: number) {
   await query(`INSERT INTO favorites(user_id, actor_user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [user_id, actor_user_id]);
@@ -450,6 +545,32 @@ export async function listFavoriteActors(user_id: number): Promise<Actor[]> {
 export async function isFavorite(user_id: number, actor_user_id: number): Promise<boolean> {
   const rows = await query(`SELECT 1 FROM favorites WHERE user_id=$1 AND actor_user_id=$2`, [user_id, actor_user_id]);
   return !!rows[0];
+}
+
+// === User Projects ===
+export type UserProject = { id:number; user_id:number; title:string; role:string|null; description:string|null; media_url:string|null; media_type:string|null; created_at:string };
+
+export async function listUserProjects(user_id: number): Promise<UserProject[]> {
+  const rows = await query(
+    `SELECT id, user_id, title, role, description, media_url, media_type, created_at
+     FROM user_projects WHERE user_id=$1 ORDER BY created_at DESC`,
+    [user_id]
+  );
+  return rows as UserProject[];
+}
+
+export async function addUserProject(user_id: number, data: { title:string; role?:string|null; description?:string|null; media_url?:string|null; media_type?:string|null; }): Promise<UserProject> {
+  const rows = await query(
+    `INSERT INTO user_projects(user_id, title, role, description, media_url, media_type)
+     VALUES ($1,$2,$3,$4,$5,$6)
+     RETURNING id, user_id, title, role, description, media_url, media_type, created_at`,
+    [user_id, data.title, data.role ?? null, data.description ?? null, data.media_url ?? null, data.media_type ?? null]
+  );
+  return rows[0] as UserProject;
+}
+
+export async function deleteUserProject(user_id: number, id: number) {
+  await query(`DELETE FROM user_projects WHERE id=$1 AND user_id=$2`, [id, user_id]);
 }
 
 // === Casting sends ===

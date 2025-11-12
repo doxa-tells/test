@@ -31,14 +31,20 @@ declare namespace __next_route_internal_types__ {
   type StaticRoutes = 
     | `/`
     | `/about`
+    | `/castings`
+    | `/api/actor-link`
+    | `/api/actors/search`
     | `/api/auth/login`
     | `/api/auth/logout`
     | `/api/auth/register`
-    | `/api/favorites`
     | `/api/castings`
     | `/api/prefs`
+    | `/api/favorites`
+    | `/api/public/castings`
     | `/api/public-actors`
     | `/api/send-casting`
+    | `/api/settings/avatar`
+    | `/api/settings/projects`
     | `/api/upload`
     | `/favorites`
     | `/feed`
@@ -47,12 +53,17 @@ declare namespace __next_route_internal_types__ {
     | `/partners`
     | `/register`
     | `/settings`
+    | `/settings/actor-link`
   type DynamicRoutes<T extends string = string> = 
     | `/actor/${SafeSlug<T>}`
+    | `/castings/${SafeSlug<T>}`
+    | `/api/castings/${SafeSlug<T>}`
     | `/api/castings/${SafeSlug<T>}/actors`
+    | `/api/castings/${SafeSlug<T>}/auditions`
     | `/api/castings/${SafeSlug<T>}/decision`
-    | `/api/castings/${SafeSlug<T>}/prefs`
     | `/api/castings/${SafeSlug<T>}/files`
+    | `/api/castings/${SafeSlug<T>}/prefs`
+    | `/api/public/castings/${SafeSlug<T>}`
     | `/feed/${SafeSlug<T>}`
     | `/media/${SafeSlug<T>}/photo/${SafeSlug<T>}`
     | `/my-castings/${SafeSlug<T>}`

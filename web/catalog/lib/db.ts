@@ -261,7 +261,7 @@ export async function ensureTables() {
     CREATE TABLE IF NOT EXISTS casting_likes (
       id SERIAL PRIMARY KEY,
       casting_id INTEGER NOT NULL REFERENCES castings(id) ON DELETE CASCADE,
-      actor_user_id INTEGER NOT NULL,
+      actor_user_id BIGINT NOT NULL,
       decision TEXT NOT NULL CHECK (decision IN ('like','skip')),
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       UNIQUE(casting_id, actor_user_id)
@@ -269,7 +269,7 @@ export async function ensureTables() {
 
     CREATE TABLE IF NOT EXISTS favorites (
       user_id INTEGER NOT NULL REFERENCES users_auth(id) ON DELETE CASCADE,
-      actor_user_id INTEGER NOT NULL,
+      actor_user_id BIGINT NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       PRIMARY KEY (user_id, actor_user_id)
     );
@@ -277,7 +277,7 @@ export async function ensureTables() {
     CREATE TABLE IF NOT EXISTS casting_sends (
       id SERIAL PRIMARY KEY,
       casting_id INTEGER NOT NULL REFERENCES castings(id) ON DELETE CASCADE,
-      actor_user_id INTEGER NOT NULL,
+      actor_user_id BIGINT NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       UNIQUE(casting_id, actor_user_id)
     );
@@ -318,6 +318,34 @@ export async function ensureTables() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
+
+  // Migrate existing schemas where actor_user_id was INTEGER to BIGINT to support large user ids
+  await query(`DO $$ BEGIN
+    IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_name='favorites' AND column_name='actor_user_id' AND data_type='integer'
+    ) THEN
+      ALTER TABLE favorites ALTER COLUMN actor_user_id TYPE BIGINT;
+    END IF;
+  END $$;`);
+
+  await query(`DO $$ BEGIN
+    IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_name='casting_likes' AND column_name='actor_user_id' AND data_type='integer'
+    ) THEN
+      ALTER TABLE casting_likes ALTER COLUMN actor_user_id TYPE BIGINT;
+    END IF;
+  END $$;`);
+
+  await query(`DO $$ BEGIN
+    IF EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_name='casting_sends' AND column_name='actor_user_id' AND data_type='integer'
+    ) THEN
+      ALTER TABLE casting_sends ALTER COLUMN actor_user_id TYPE BIGINT;
+    END IF;
+  END $$;`);
 }
 
 export async function getUserByEmail(email: string): Promise<(AuthUser & { pass_hash: string }) | undefined> {

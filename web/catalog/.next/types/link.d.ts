@@ -34,14 +34,14 @@ declare namespace __next_route_internal_types__ {
     | `/api/auth/login`
     | `/api/auth/logout`
     | `/api/auth/register`
-    | `/api/castings`
     | `/api/favorites`
+    | `/api/castings`
     | `/api/prefs`
-    | `/api/send-casting`
     | `/api/public-actors`
+    | `/api/send-casting`
     | `/api/upload`
-    | `/feed`
     | `/favorites`
+    | `/feed`
     | `/login`
     | `/my-castings`
     | `/partners`
@@ -51,8 +51,8 @@ declare namespace __next_route_internal_types__ {
     | `/actor/${SafeSlug<T>}`
     | `/api/castings/${SafeSlug<T>}/actors`
     | `/api/castings/${SafeSlug<T>}/decision`
-    | `/api/castings/${SafeSlug<T>}/files`
     | `/api/castings/${SafeSlug<T>}/prefs`
+    | `/api/castings/${SafeSlug<T>}/files`
     | `/feed/${SafeSlug<T>}`
     | `/media/${SafeSlug<T>}/photo/${SafeSlug<T>}`
     | `/my-castings/${SafeSlug<T>}`

@@ -1,6 +1,7 @@
 // web/catalog/app/my-castings/page.tsx
 import { ensureTables, listMyCastings } from "../../lib/db";
 import { currentUser } from "../../lib/auth";
+import { bp } from "../../lib/http";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,7 @@ export default async function MyCastingsPage() {
       <div>
         <h1 className="h1">Мои кастинги</h1>
         <p className="p">Авторизуйтесь, чтобы продолжить.</p>
-        <a className="btn" href="/login">Войти</a>
+        <a className="btn" href={bp('/login')}>Войти</a>
       </div>
     );
   }
@@ -40,7 +41,7 @@ export default async function MyCastingsPage() {
             @media (max-width: 640px) { .row2 { grid-template-columns: 1fr; } }
           `}</style>
           <div className="h2" style={{textAlign:'center', marginBottom:12}}>Создать новый кастинг</div>
-          <form action="/api/castings" method="post" encType="multipart/form-data" className="formGrid">
+          <form action={bp('/api/castings')} method="post" encType="multipart/form-data" className="formGrid">
             <div className="section">
               <div className="sectionHdr">Базовая информация</div>
               <div className="row2">
@@ -151,7 +152,7 @@ export default async function MyCastingsPage() {
       ) : (
         <div className="grid" style={{gridTemplateColumns:'1fr 1fr', gap:12}}>
           {items.map((c: any) => (
-            <a key={c.id} href={`/my-castings/${c.id}`} className="card">
+            <a key={c.id} href={bp(`/my-castings/${c.id}`)} className="card">
               <div className="cardBody">
                 <div className="h2">{c.title}</div>
                 <p className="p">{c.description || "без описания"}</p>
@@ -163,4 +164,3 @@ export default async function MyCastingsPage() {
     </div>
   );
 }
-

@@ -1,6 +1,7 @@
 // web/catalog/app/login/page.tsx
 "use client";
 import { useState } from "react";
+import { api, bp } from "../../lib/http";
 
 export default function LoginPage() {
   const [loading, setLoading] = useState(false);
@@ -10,11 +11,11 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true); setError(null);
     const form = new FormData(e.currentTarget);
-    const res = await fetch("/api/auth/login", { method: "POST", body: form });
+    const res = await fetch(api("/api/auth/login"), { method: "POST", body: form });
     const data = await res.json();
     setLoading(false);
     if (!data.ok) { setError(data.error || "Ошибка"); return; }
-    location.href = "/my-castings";
+    location.href = bp("/my-castings");
   }
 
   return (
@@ -28,7 +29,7 @@ export default function LoginPage() {
             <input className="input" name="password" placeholder="Пароль" type="password" required />
             {error && <div className="p" style={{color:'#ff6b6b'}}>{error}</div>}
             <button className="btn" disabled={loading}>{loading?"Загрузка...":"Войти"}</button>
-            <a className="btn btn--ghost" href="/register">Создать аккаунт</a>
+            <a className="btn btn--ghost" href={bp('/register')}>Создать аккаунт</a>
           </form>
         </div>
       </div>

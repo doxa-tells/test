@@ -1,11 +1,12 @@
 // web/catalog/app/settings/page.tsx
 "use client";
 import React from "react";
+import { api, bp } from "../../lib/http";
 
 export default function SettingsPage() {
   async function logout() {
-    const r = await fetch('/api/auth/logout', { method:'POST' });
-    if (r.ok) location.href = '/';
+    const r = await fetch(api('/api/auth/logout'), { method:'POST' });
+    if (r.ok) location.href = bp('/');
   }
 
   return (

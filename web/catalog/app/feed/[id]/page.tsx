@@ -1,6 +1,7 @@
 // web/catalog/app/feed/[id]/page.tsx
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { api, bp } from "../../../lib/http";
 
 export default function FeedCastingPage({ params }: { params: { id: string } }) {
   const castingId = Number(params.id);
@@ -9,8 +10,8 @@ export default function FeedCastingPage({ params }: { params: { id: string } }) 
   const cardRef = useRef<HTMLDivElement|null>(null);
 
   useEffect(() => {
-    fetch(`/api/castings/${castingId}/actors`).then(async (r) => {
-      if (r.status === 401) { location.href = '/login'; return; }
+    fetch(api(`/api/castings/${castingId}/actors`)).then(async (r) => {
+      if (r.status === 401) { location.href = bp('/login'); return; }
       const d = await r.json();
       setActors(d.items || []);
     });
@@ -24,7 +25,7 @@ export default function FeedCastingPage({ params }: { params: { id: string } }) 
       cardRef.current.style.transform = decision === 'like' ? 'translateX(40px) rotate(3deg)' : 'translateX(-40px) rotate(-3deg)';
       cardRef.current.style.opacity = '0.85';
     }
-    await fetch(`/api/castings/${castingId}/decision`, { method: 'POST', body: JSON.stringify({ actor_user_id: a.user_id, decision }) });
+    await fetch(api(`/api/castings/${castingId}/decision`), { method: 'POST', body: JSON.stringify({ actor_user_id: a.user_id, decision }) });
     setI((v) => v + 1);
     if (cardRef.current) {
       setTimeout(()=>{
@@ -51,7 +52,7 @@ export default function FeedCastingPage({ params }: { params: { id: string } }) 
         <h1 className="h1" style={{textAlign:'center'}}>Моя лента · Кастинг #{castingId}</h1>
       </div>
       <div className="row" style={{justifyContent:'center', marginTop:8}}>
-        <a className="btn btn--ghost" href="/feed">Назад к ленте</a>
+        <a className="btn btn--ghost" href={bp('/feed')}>Назад к ленте</a>
       </div>
       <hr className="hr" />
 

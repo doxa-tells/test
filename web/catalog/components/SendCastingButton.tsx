@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { api, bp } from "../lib/http";
 
 export default function SendCastingButton({ actorUserId }: { actorUserId: number }) {
   const [open, setOpen] = useState(false);
@@ -8,8 +9,8 @@ export default function SendCastingButton({ actorUserId }: { actorUserId: number
   const [sent, setSent] = useState<string | null>(null);
 
   async function loadCastings() {
-    const r = await fetch('/api/castings');
-    if (r.status === 401) { location.href = '/login'; return; }
+    const r = await fetch(api('/api/castings'));
+    if (r.status === 401) { location.href = bp('/login'); return; }
     const d = await r.json();
     if (d.ok) setCastings(d.items || []);
   }
@@ -28,8 +29,8 @@ export default function SendCastingButton({ actorUserId }: { actorUserId: number
     if (loading) return;
     setLoading(true);
     try {
-      const r = await fetch('/api/send-casting', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ casting_id, actor_user_id: actorUserId }) });
-      if (r.status === 401) { location.href = '/login'; return; }
+      const r = await fetch(api('/api/send-casting'), { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ casting_id, actor_user_id: actorUserId }) });
+      if (r.status === 401) { location.href = bp('/login'); return; }
       const d = await r.json();
       if (d.ok) { setSent('Отправлено'); setTimeout(()=>{ setOpen(false); setSent(null); }, 800); }
     } finally { setLoading(false); }
@@ -47,7 +48,7 @@ export default function SendCastingButton({ actorUserId }: { actorUserId: number
               {castings.length === 0 ? (
                 <div className="section">
                   <p className="p">У вас пока нет кастингов.</p>
-                  <a className="btn" href="/my-castings">Создать</a>
+                  <a className="btn" href={bp('/my-castings')}>Создать</a>
                 </div>
               ) : (
                 <div className="grid" style={{gridTemplateColumns:'1fr'}}>

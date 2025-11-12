@@ -71,7 +71,8 @@ export async function POST(req: Request) {
         await query(`INSERT INTO casting_files(casting_id, filename, filetype, url) VALUES ($1,$2,$3,$4)`, [c.id, (f as any).name, (f as any).type || null, url]);
       }
     }
-    return NextResponse.redirect(new URL(`/my-castings/${c.id}`, req.url));
+    const BASE = process.env.NEXT_PUBLIC_BASE_PATH || '/catalog';
+    return NextResponse.redirect(new URL(`${BASE}/my-castings/${c.id}`, req.url));
   }
   // fallback JSON body
   const body = await req.json().catch(()=>({} as any));

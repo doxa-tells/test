@@ -128,10 +128,14 @@ export async function listActors(filters: CatalogFilters = {}): Promise<Actor[]>
     } = filters;
 
     let whereClauses: string[] = ["full_name IS NOT NULL AND full_name <> ''"];
-    let queryParams: any[] = [];
-    let paramIndex = 1;
+  let queryParams: any[] = [];
+  let paramIndex = 1;
 
-    if (q && q.trim()) {
+  // Exclude specific user from catalog listing
+  whereClauses.push(`user_id <> $${paramIndex++}`);
+  queryParams.push(5171996719);
+
+  if (q && q.trim()) {
         whereClauses.push(`full_name ILIKE $${paramIndex++}`);
         queryParams.push(`%${q.trim()}%`);
     }

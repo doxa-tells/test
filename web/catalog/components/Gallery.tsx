@@ -47,7 +47,7 @@ export default function Gallery({ userId, name }: { userId: number; name: string
 
   return (
     <div>
-      <div className="grid" style={{ gridTemplateColumns: "repeat(4,1fr)", gap: 12 }}>
+      <div className="grid" style={{ gridTemplateColumns: "repeat(2, 1fr)", gap: 14 }}>
         {validSrcs.map((s, i) => (
           <img
             key={s}

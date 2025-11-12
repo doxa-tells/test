@@ -44,7 +44,7 @@ export default async function ActorPage({ params }: { params: { id: string } }) 
       </Link>
       <h1 className="h1" style={{ marginTop: 12 }}>{a.full_name}</h1>
 
-      <section style={{display:'grid', gridTemplateColumns:'minmax(280px, 380px) 1fr', gap:24, alignItems:'start'}}>
+      <section style={{display:'grid', gridTemplateColumns:'minmax(360px, 520px) 1fr', gap:24, alignItems:'start'}}>
         <div>
           <Gallery userId={a.user_id} name={a.full_name || "Актёр"} />
         </div>

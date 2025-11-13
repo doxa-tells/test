@@ -6,10 +6,14 @@ import { api, bp } from "../../../lib/http";
 export default function CastingDetail({ params }: { params: { id: string } }) {
   const castingId = Number(params.id);
   const [files, setFiles] = useState<Array<{id:number; filename:string; url:string}>>([]);
+  const [auditions, setAuditions] = useState<Array<{id:number; filename:string; url:string; actor_user_id:number; created_at?:string}>>([]);
 
   useEffect(() => {
     fetch(api(`/api/castings/${castingId}/files`)).then(r=>r.json()).then(d=>{
       if (d.ok) setFiles(d.items || []);
+    }).catch(()=>{});
+    fetch(api(`/api/castings/${castingId}/auditions`)).then(r=>r.json()).then(d=>{
+      if (d.ok) setAuditions(d.items || []);
     }).catch(()=>{});
   }, [castingId]);
 
@@ -37,6 +41,24 @@ export default function CastingDetail({ params }: { params: { id: string } }) {
                 <div className="cardBody">
                   <div className="h2" style={{fontSize:14, textAlign:'center'}}>{f.filename}</div>
                   <p className="p" style={{textAlign:'center'}}>скачать</p>
+                </div>
+              </a>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="section">
+        <div className="sectionTitle" style={{textAlign:'center'}}>Отклики актёров</div>
+        {!auditions || auditions.length === 0 ? (
+          <p className="p" style={{textAlign:'center'}}>Пока нет откликов</p>
+        ) : (
+          <div className="grid2" style={{justifyItems:'center'}}>
+            {auditions.map((a:any)=> (
+              <a key={a.id} className="card" href={bp(a.url)} target="_blank" rel="noopener noreferrer">
+                <div className="cardBody">
+                  <div className="h2" style={{fontSize:14, textAlign:'center'}}>{a.filename || 'видео-проба'}</div>
+                  <p className="p" style={{textAlign:'center'}}>актёр ID: {a.actor_user_id}</p>
                 </div>
               </a>
             ))}

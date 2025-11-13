@@ -1,7 +1,7 @@
 // web/catalog/app/api/settings/avatar/route.ts
 import { NextResponse } from "next/server";
 import { currentUser } from "../../../../lib/auth";
-import { mkdir, writeFile, stat } from "fs/promises";
+import { mkdir, writeFile, stat, unlink } from "fs/promises";
 import { join } from "path";
 
 export const dynamic = "force-dynamic";
@@ -45,4 +45,18 @@ export async function POST(req: Request) {
   await writeFile(filepath, new Uint8Array(ab));
   const url = `/uploads/${user.id}/profile/avatar.${ext}`;
   return NextResponse.json({ ok: true, url });
+}
+
+export async function DELETE() {
+  const user = await currentUser();
+  if (!user) return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 });
+  const cwd = process.cwd();
+  const appRoot = appRootFromCwd(cwd);
+  const base = join(appRoot, 'public', 'uploads', String(user.id), 'profile');
+  const candidates = ['avatar.jpg','avatar.jpeg','avatar.png','avatar.webp'];
+  let removed = false;
+  for (const name of candidates) {
+    try { await unlink(join(base, name)); removed = true; } catch {}
+  }
+  return NextResponse.json({ ok: true, removed });
 }

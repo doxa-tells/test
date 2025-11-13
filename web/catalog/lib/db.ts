@@ -17,6 +17,19 @@ function getPool() {
     return pool;
 }
 
+export async function getUserAuthById(id: number): Promise<(AuthUser & { pass_hash: string }) | undefined> {
+  const rows = await query(`SELECT id, email, pass_hash, created_at FROM users_auth WHERE id = $1`, [id]);
+  return rows[0];
+}
+
+export async function updateUserEmail(id: number, email: string) {
+  await query(`UPDATE users_auth SET email=$1 WHERE id=$2`, [email, id]);
+}
+
+export async function updateUserPasswordHash(id: number, pass_hash: string) {
+  await query(`UPDATE users_auth SET pass_hash=$1 WHERE id=$2`, [pass_hash, id]);
+}
+
 export type CastingPrefs = {
   role_title?: string | null;
   project?: string | null;
@@ -244,6 +257,7 @@ export async function ensureTables() {
       user_id INTEGER NOT NULL REFERENCES users_auth(id) ON DELETE CASCADE,
       name TEXT NOT NULL,
       role TEXT,
+      bio TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       , UNIQUE(user_id, name)
     );
@@ -390,6 +404,57 @@ export async function ensureTables() {
     END IF;
   END $$;`);
 
+  // Add bio column to companies if missing
+  await query(`DO $$ BEGIN
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_name='companies' AND column_name='bio'
+    ) THEN
+      ALTER TABLE companies ADD COLUMN bio TEXT;
+    END IF;
+  END $$;`);
+
+  // Add links column to user_projects if missing
+  await query(`DO $$ BEGIN
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_name='user_projects' AND column_name='links'
+    ) THEN
+      ALTER TABLE user_projects ADD COLUMN links TEXT;
+    END IF;
+  END $$;`);
+
+  // Add portfolio fields to user_projects if missing
+  await query(`DO $$ BEGIN
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns WHERE table_name='user_projects' AND column_name='production'
+    ) THEN ALTER TABLE user_projects ADD COLUMN production TEXT; END IF;
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns WHERE table_name='user_projects' AND column_name='year'
+    ) THEN ALTER TABLE user_projects ADD COLUMN year INTEGER; END IF;
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns WHERE table_name='user_projects' AND column_name='genre'
+    ) THEN ALTER TABLE user_projects ADD COLUMN genre TEXT; END IF;
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns WHERE table_name='user_projects' AND column_name='format'
+    ) THEN ALTER TABLE user_projects ADD COLUMN format TEXT; END IF;
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns WHERE table_name='user_projects' AND column_name='platform'
+    ) THEN ALTER TABLE user_projects ADD COLUMN platform TEXT; END IF;
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns WHERE table_name='user_projects' AND column_name='country'
+    ) THEN ALTER TABLE user_projects ADD COLUMN country TEXT; END IF;
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns WHERE table_name='user_projects' AND column_name='city'
+    ) THEN ALTER TABLE user_projects ADD COLUMN city TEXT; END IF;
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns WHERE table_name='user_projects' AND column_name='responsibilities'
+    ) THEN ALTER TABLE user_projects ADD COLUMN responsibilities TEXT; END IF;
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns WHERE table_name='user_projects' AND column_name='awards'
+    ) THEN ALTER TABLE user_projects ADD COLUMN awards TEXT; END IF;
+  END $$;`);
+
   // Add weight columns to casting_prefs if they are missing
   await query(`DO $$ BEGIN
     IF NOT EXISTS (
@@ -420,15 +485,35 @@ export async function createUser(email: string, pass_hash: string): Promise<Auth
   return rows[0];
 }
 
-export async function upsertCompany(user_id: number, name: string, role: string | null) {
-  const rows = await query(
-    `INSERT INTO companies(user_id, name, role)
-     VALUES ($1,$2,$3)
-     ON CONFLICT (user_id, name) DO UPDATE SET role = EXCLUDED.role
-     RETURNING id, user_id, name, role`,
-    [user_id, name, role]
+export async function upsertCompany(user_id: number, name: string, role: string | null, bio?: string | null) {
+  // 1) Collapse duplicates: keep the latest row, delete the rest
+  const rows = await query(`SELECT id FROM companies WHERE user_id=$1 ORDER BY id DESC`, [user_id]);
+  if (rows.length > 1) {
+    const keepId = rows[0].id as number;
+    const toDelete = rows.slice(1).map((r:any)=>r.id);
+    await query(`DELETE FROM companies WHERE user_id=$1 AND id <> ALL($2::int[])`, [user_id, toDelete]);
+  }
+
+  // 2) Update kept row if exists (use explicit id to avoid unique conflicts on (user_id, name))
+  const kept = await query(`SELECT id FROM companies WHERE user_id=$1 LIMIT 1`, [user_id]);
+  if (kept[0]) {
+    const id = kept[0].id as number;
+    const updated = await query(
+      `UPDATE companies SET name=$2, role=$3, bio=$4 WHERE id=$1
+       RETURNING id, user_id, name, role, bio`,
+      [id, name, role, bio ?? null]
+    );
+    return updated[0];
+  }
+
+  // 3) If none exists, insert
+  const inserted = await query(
+    `INSERT INTO companies(user_id, name, role, bio)
+     VALUES ($1,$2,$3,$4)
+     RETURNING id, user_id, name, role, bio`,
+    [user_id, name, role, bio ?? null]
   );
-  return rows[0];
+  return inserted[0];
 }
 
 export async function createCasting(user_id: number, title: string, description: string | null) {

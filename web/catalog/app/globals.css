@@ -1,3 +1,11 @@
+@import url('https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&display=swap');
+
+html, body {
+  font-family: 'Golos Text', system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', sans-serif;
+}
+
+/* Гарантируем наследование для всех элементов */
+* { font-family: inherit; }
 :root{
   --bg:#0b0c0f;      /* чёрный */
   --fg:#ffffff;      /* белый */

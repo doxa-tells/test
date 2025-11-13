@@ -15,7 +15,13 @@ export async function GET() {
   await ensureTables();
   const user = await currentUser();
   if (!user) return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 });
-  const projects = await query(`SELECT id, user_id, title, role, description, media_url, media_type, created_at FROM user_projects WHERE user_id=$1 ORDER BY created_at DESC`, [user.id]);
+  const projects = await query(
+    `SELECT id, user_id, title, role, description, links,
+            production, year, genre, format, platform, country, city, responsibilities, awards,
+            media_url, media_type, created_at
+     FROM user_projects WHERE user_id=$1 ORDER BY created_at DESC`,
+    [user.id]
+  );
   const ids = projects.map((p:any)=>p.id);
   let media: any[] = [];
   if (ids.length) {
@@ -37,8 +43,28 @@ export async function POST(req: Request) {
   const title = String(form.get('title') || '').trim();
   const role = String(form.get('role') || '').trim() || null;
   const description = String(form.get('description') || '').trim() || null;
+  const links = String(form.get('links') || '').trim() || null;
+  const production = String(form.get('production') || '').trim() || null;
+  const yearRaw = String(form.get('year') || '').trim();
+  const year = yearRaw ? Number(yearRaw) : null;
+  const genre = String(form.get('genre') || '').trim() || null;
+  const format = String(form.get('format') || '').trim() || null;
+  const platform = String(form.get('platform') || '').trim() || null;
+  const country = String(form.get('country') || '').trim() || null;
+  const city = String(form.get('city') || '').trim() || null;
+  const responsibilities = String(form.get('responsibilities') || '').trim() || null;
+  const awards = String(form.get('awards') || '').trim() || null;
   if (!title) return NextResponse.json({ ok: false, error: 'title_required' }, { status: 400 });
-  const rows = await query(`INSERT INTO user_projects(user_id, title, role, description) VALUES ($1,$2,$3,$4) RETURNING id`, [user.id, title, role, description]);
+  const rows = await query(
+    `INSERT INTO user_projects(
+        user_id, title, role, description, links,
+        production, year, genre, format, platform, country, city, responsibilities, awards
+     ) VALUES (
+        $1,$2,$3,$4,$5,
+        $6,$7,$8,$9,$10,$11,$12,$13,$14
+     ) RETURNING id`,
+    [user.id, title, role, description, links, production, (Number.isFinite(year as any) ? year : null), genre, format, platform, country, city, responsibilities, awards]
+  );
   const projectId = rows[0].id as number;
   const files = form.getAll('files').filter(f => !!f && typeof f !== 'string') as File[];
 

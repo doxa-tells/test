@@ -1,5 +1,6 @@
 "use client";
 import React from "react";
+import { createPortal } from "react-dom";
 
 export default function SettingsProjectsBlock() {
   const [items, setItems] = React.useState<any[]>([]);
@@ -8,8 +9,28 @@ export default function SettingsProjectsBlock() {
   const [title, setTitle] = React.useState('');
   const [role, setRole] = React.useState('');
   const [description, setDescription] = React.useState('');
+  const [links, setLinks] = React.useState('');
+  const [production, setProduction] = React.useState('');
+  const [year, setYear] = React.useState('');
+  const [genre, setGenre] = React.useState('');
+  const [format, setFormat] = React.useState('');
+  const [platform, setPlatform] = React.useState('');
+  const [country, setCountry] = React.useState('');
+  const [city, setCity] = React.useState('');
+  const [responsibilities, setResponsibilities] = React.useState('');
+  const [awards, setAwards] = React.useState('');
   const [files, setFiles] = React.useState<File[]>([]);
   const [msg, setMsg] = React.useState<string>('');
+  const [open, setOpen] = React.useState(false);
+  // Lock scroll and handle Esc when modal open
+  React.useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => { document.body.style.overflow = prev; window.removeEventListener('keydown', onKey); };
+  }, [open]);
 
   async function load() {
     setLoading(true);
@@ -30,14 +51,26 @@ export default function SettingsProjectsBlock() {
       fd.append('title', title.trim());
       if (role.trim()) fd.append('role', role.trim());
       if (description.trim()) fd.append('description', description.trim());
+      if (links.trim()) fd.append('links', links.trim());
+      if (production.trim()) fd.append('production', production.trim());
+      if (year.trim()) fd.append('year', year.trim());
+      if (genre.trim()) fd.append('genre', genre.trim());
+      if (format.trim()) fd.append('format', format.trim());
+      if (platform.trim()) fd.append('platform', platform.trim());
+      if (country.trim()) fd.append('country', country.trim());
+      if (city.trim()) fd.append('city', city.trim());
+      if (responsibilities.trim()) fd.append('responsibilities', responsibilities.trim());
+      if (awards.trim()) fd.append('awards', awards.trim());
       for (const f of files) fd.append('files', f);
       const r = await fetch('/catalog/api/settings/projects', { method:'POST', body: fd });
       const d = await r.json();
       if (r.ok && d.ok) {
-        setTitle(''); setRole(''); setDescription(''); setFiles([]);
+        setTitle(''); setRole(''); setDescription(''); setLinks('');
+        setProduction(''); setYear(''); setGenre(''); setFormat(''); setPlatform(''); setCountry(''); setCity(''); setResponsibilities(''); setAwards('');
+        setFiles([]);
         setMsg('Проект добавлен');
         await load();
-        setTimeout(()=>setMsg(''), 1200);
+        setTimeout(()=>{ setMsg(''); setOpen(false); }, 800);
       }
     } finally { setSaving(false); }
   }
@@ -54,30 +87,61 @@ export default function SettingsProjectsBlock() {
       <div className="cardBody">
         <div className="row space" style={{marginBottom:8}}>
           <div className="h2">Проекты</div>
-          {!loading && (
-            <div className="p" style={{opacity:.8}}>{items.length} шт.</div>
-          )}
         </div>
 
-        <form onSubmit={onAdd} className="grid1" style={{marginBottom:12}}>
-          <div className="grid" style={{gridTemplateColumns:'1fr 1fr', gap:8}}>
-            <input className="input" placeholder="Название проекта *" value={title} onChange={(e)=>setTitle(e.target.value)} required />
-            <input className="input" placeholder="Роль" value={role} onChange={(e)=>setRole(e.target.value)} />
-          </div>
-          <textarea className="input" placeholder="Описание" value={description} onChange={(e)=>setDescription(e.target.value)} style={{minHeight:80}} />
-          <input className="input" type="file" multiple accept="image/*,video/*" onChange={(e)=> setFiles(Array.from(e.target.files || [])) } />
-          {files.length>0 && (
-            <div className="dzFiles">
-              {files.map((f, i)=> (
-                <div key={i} className="dzFile">{f.name}</div>
-              ))}
+        <div className="row" style={{justifyContent:'flex-end'}}>
+          <button className="btn" onClick={()=>setOpen(true)}>Добавить проект</button>
+        </div>
+
+        {open && typeof window !== 'undefined' && createPortal(
+          <div className="overlay" onClick={()=>!saving && setOpen(false)}>
+            <div className="modal" style={{maxWidth:720, width:'90vw'}} onClick={(e)=>e.stopPropagation()}>
+              <div className="modalBody">
+                <div className="row space">
+                  <div className="h2">Новый проект</div>
+                  <button className="btn btn--ghost" onClick={()=>!saving && setOpen(false)} aria-label="Закрыть">✕</button>
+                </div>
+                <form onSubmit={onAdd} className="grid1">
+                  <div className="grid" style={{gridTemplateColumns:'1fr 1fr', gap:8}}>
+                    <input className="input" placeholder="Название проекта *" value={title} onChange={(e)=>setTitle(e.target.value)} required />
+                    <input className="input" placeholder="Роль" value={role} onChange={(e)=>setRole(e.target.value)} />
+                  </div>
+                  <div className="grid" style={{gridTemplateColumns:'1fr 1fr', gap:8}}>
+                    <input className="input" placeholder="Производство (компания/студия)" value={production} onChange={(e)=>setProduction(e.target.value)} />
+                    <input className="input" placeholder="Год" value={year} onChange={(e)=>setYear(e.target.value.replace(/[^0-9]/g,''))} />
+                  </div>
+                  <div className="grid" style={{gridTemplateColumns:'1fr 1fr', gap:8}}>
+                    <input className="input" placeholder="Жанр (напр. драма)" value={genre} onChange={(e)=>setGenre(e.target.value)} />
+                    <input className="input" placeholder="Формат (полный метр, сериал...)" value={format} onChange={(e)=>setFormat(e.target.value)} />
+                  </div>
+                  <div className="grid" style={{gridTemplateColumns:'1fr 1fr', gap:8}}>
+                    <input className="input" placeholder="Платформа (кинотеатр/онлайн)" value={platform} onChange={(e)=>setPlatform(e.target.value)} />
+                    <input className="input" placeholder="Страна" value={country} onChange={(e)=>setCountry(e.target.value)} />
+                  </div>
+                  <div className="grid" style={{gridTemplateColumns:'1fr 1fr', gap:8}}>
+                    <input className="input" placeholder="Город" value={city} onChange={(e)=>setCity(e.target.value)} />
+                    <input className="input" placeholder="Награды (кратко)" value={awards} onChange={(e)=>setAwards(e.target.value)} />
+                  </div>
+                  <textarea className="input" placeholder="Задачи/обязанности (кратко)" value={responsibilities} onChange={(e)=>setResponsibilities(e.target.value)} style={{minHeight:80}} />
+                  <textarea className="input" placeholder="Описание проекта" value={description} onChange={(e)=>setDescription(e.target.value)} style={{minHeight:120}} />
+                  <textarea className="input" placeholder="Ссылки (через пробел или с новой строки)" value={links} onChange={(e)=>setLinks(e.target.value)} style={{minHeight:80}} />
+                  <input className="input" type="file" multiple accept="image/*,video/*" onChange={(e)=> setFiles(Array.from(e.target.files || [])) } />
+                  {files.length>0 && (
+                    <div className="dzFiles">
+                      {files.map((f, i)=> (
+                        <div key={i} className="dzFile">{f.name}</div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="row" style={{justifyContent:'space-between', alignItems:'center'}}>
+                    {msg && <span className="p" style={{color:'#10a37f'}}>{msg}</span>}
+                    <button className="btn" type="submit" disabled={saving || !title.trim()}>{saving? 'Сохранение…' : 'Создать'}</button>
+                  </div>
+                </form>
+              </div>
             </div>
-          )}
-          <div className="row" style={{justifyContent:'space-between', alignItems:'center'}}>
-            {msg && <span className="p" style={{color:'#10a37f'}}>{msg}</span>}
-            <button className="btn" type="submit" disabled={saving}>{saving? 'Сохранение…' : 'Добавить проект'}</button>
-          </div>
-        </form>
+          </div>, document.body
+        )}
 
         <hr className="hr" />
 
@@ -95,8 +159,25 @@ export default function SettingsProjectsBlock() {
                     <button className="btn btn--ghost" onClick={()=>onDelete(p.id)}>Удалить</button>
                   </div>
                   <div className="p" style={{marginTop:4, opacity:.85}}>
-                    {[p.role, p.description].filter(Boolean).join(' · ') || '—'}
+                    {[
+                      p.role,
+                      p.production,
+                      p.year,
+                      p.genre,
+                      p.format,
+                      p.platform,
+                      [p.country, p.city].filter(Boolean).join(', ')
+                    ].filter(Boolean).join(' · ') || '—'}
                   </div>
+                  {p.links && (
+                    <div className="row" style={{gap:8, flexWrap:'wrap', marginTop:8}}>
+                      {String(p.links).split(/\s+/).filter((s:string)=>/^https?:\/\//i.test(s)).slice(0,8).map((u:string, i:number)=> (
+                        <a key={i} className="btn btn--ghost" href={u} target="_blank" rel="noreferrer noopener" style={{padding:'6px 10px'}}>
+                          {u}
+                        </a>
+                      ))}
+                    </div>
+                  )}
                   {Array.isArray(p.media) && p.media.length>0 && (
                     <div className="grid" style={{gridTemplateColumns:'repeat(4,1fr)', gap:8, marginTop:10}}>
                       {p.media.map((m:any)=> (

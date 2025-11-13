@@ -47,19 +47,33 @@ export default function Gallery({ userId, name }: { userId: number; name: string
 
   return (
     <div>
-      <div className="grid" style={{ gridTemplateColumns: "repeat(2, 1fr)", gap: 14 }}>
-        {validSrcs.map((s, i) => (
+      {validSrcs.length === 1 ? (
+        <div className="grid" style={{ gridTemplateColumns: "1fr", gap: 14 }}>
           <img
-            key={s}
+            key={validSrcs[0]}
             className="thumb"
-            src={s}
-            alt={`${name || "Актёр"} фото ${i + 1}`}
+            src={validSrcs[0]}
+            alt={`${name || "Актёр"} фото 1`}
             loading="lazy"
-            onClick={() => openAt(i)}
-            style={{ cursor: "zoom-in" }}
+            onClick={() => openAt(0)}
+            style={{ cursor: "zoom-in", width: '100%' }}
           />
-        ))}
-      </div>
+        </div>
+      ) : (
+        <div className="grid" style={{ gridTemplateColumns: "repeat(2, 1fr)", gap: 14 }}>
+          {validSrcs.map((s, i) => (
+            <img
+              key={s}
+              className="thumb"
+              src={s}
+              alt={`${name || "Актёр"} фото ${i + 1}`}
+              loading="lazy"
+              onClick={() => openAt(i)}
+              style={{ cursor: "zoom-in" }}
+            />
+          ))}
+        </div>
+      )}
 
       {open && (
         <ImageLightbox

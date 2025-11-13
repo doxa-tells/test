@@ -116,7 +116,7 @@ export default function FeedCastingPage({ params }: { params: { id: string } }) 
         <div className="overlay" onClick={()=>setAboutOpen(false)}>
           <div className="modal" style={{width:'90vw', maxWidth:980, height:'85vh'}} onClick={(e)=>e.stopPropagation()}>
             <div className="modalBody" style={{padding:0, height:'100%'}}>
-              <iframe src={bp(`/actor/${actorId}`)} title="Об актёре" style={{border:0, width:'100%', height:'100%', borderRadius:12}} />
+              <iframe src={bp(`/embed/actor/${actorId}`)} title="Об актёре" style={{border:0, width:'100%', height:'100%', borderRadius:12}} />
             </div>
           </div>
         </div>, document.body

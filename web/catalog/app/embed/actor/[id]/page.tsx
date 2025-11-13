@@ -16,7 +16,7 @@ export default async function ActorEmbedPage({ params }: { params: { id: string 
   return (
     <section style={{display:'grid', gridTemplateColumns:'minmax(360px, 520px) 1fr', gap:24, alignItems:'start'}}>
       <div>
-        <Gallery userId={a.user_id} name={a.full_name || "Актёр"} />
+        <Gallery userId={a.user_id} name={a.full_name || "Актёр"} layout="featured" />
       </div>
       <div>
         <div className="card" style={{padding:16, marginBottom:16}}>

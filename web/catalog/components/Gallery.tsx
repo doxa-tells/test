@@ -5,7 +5,7 @@ import React, { useMemo, useState, useCallback, useEffect } from "react";
 import ImageLightbox from "./ImageLightbox";
 import { photoUrl } from "../lib/media";
 
-export default function Gallery({ userId, name }: { userId: number; name: string }) {
+export default function Gallery({ userId, name, layout }: { userId: number; name: string; layout?: 'grid' | 'featured' }) {
   const srcs = useMemo(() => [1, 2, 3, 4].map((n) => photoUrl(userId, n as 1 | 2 | 3 | 4)), [userId]);
   const [validSrcs, setValidSrcs] = useState<string[]>([]);
   const [open, setOpen] = useState(false);
@@ -58,6 +58,34 @@ export default function Gallery({ userId, name }: { userId: number; name: string
             onClick={() => openAt(0)}
             style={{ cursor: "zoom-in", width: '100%' }}
           />
+        </div>
+      ) : layout === 'featured' ? (
+        <div className="grid" style={{ gridTemplateColumns: "1fr 1fr", gap: 14, alignItems:'start' }}>
+          <div style={{ width:'100%', height:'100%', maxHeight: 520, overflow:'hidden', borderRadius:12 }}>
+            <img
+              key={validSrcs[0]}
+              className="thumb"
+              src={validSrcs[0]}
+              alt={`${name || "Актёр"} фото 1`}
+              loading="lazy"
+              onClick={() => openAt(0)}
+              style={{ cursor: "zoom-in", width:'100%', height:'100%', objectFit:'cover' }}
+            />
+          </div>
+          <div className="grid" style={{ gridTemplateColumns: "1fr", gap: 10 }}>
+            {validSrcs.slice(1).map((s, idx) => (
+              <div key={s} style={{ width:'100%', height:120, overflow:'hidden', borderRadius:12 }}>
+                <img
+                  className="thumb"
+                  src={s}
+                  alt={`${name || "Актёр"} фото ${idx + 2}`}
+                  loading="lazy"
+                  onClick={() => openAt(idx + 1)}
+                  style={{ cursor: "zoom-in", width:'100%', height:'100%', objectFit:'cover' }}
+                />
+              </div>
+            ))}
+          </div>
         </div>
       ) : (
         <div className="grid" style={{ gridTemplateColumns: "repeat(2, 1fr)", gap: 14 }}>

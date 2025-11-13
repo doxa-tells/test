@@ -1,6 +1,7 @@
 // web/catalog/app/feed/[id]/page.tsx
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { api, bp } from "../../../lib/http";
 
 export default function FeedCastingPage({ params }: { params: { id: string } }) {
@@ -10,6 +11,7 @@ export default function FeedCastingPage({ params }: { params: { id: string } }) 
   const [actors, setActors] = useState<any[] | null>(null);
   const [i, setI] = useState(0);
   const cardRef = useRef<HTMLDivElement|null>(null);
+  const [aboutOpen, setAboutOpen] = useState(false);
 
   useEffect(() => {
     // Заголовок кастинга
@@ -40,6 +42,7 @@ export default function FeedCastingPage({ params }: { params: { id: string } }) 
 
   const mode = auditions && auditions.length > 0 ? 'auditions' : 'actors';
   const current = mode === 'auditions' ? (auditions ? auditions[i] : null) : (actors ? actors[i] : null);
+  const actorId = current ? (mode === 'auditions' ? (current as any).actor_user_id : (current as any).user_id) : null;
 
   async function decide(decision: 'like'|'skip') {
     if (!current) return;
@@ -88,6 +91,7 @@ export default function FeedCastingPage({ params }: { params: { id: string } }) 
               <video style={{width:'100%', borderRadius:12}} controls src={bp((current as any).url)} />
               <div className="row" style={{marginTop:10, justifyContent:'center', gap:8}}>
                 <button className="btn" onClick={() => decide('like')}>👍 Нравится</button>
+                <button className="btn btn--ghost" onClick={() => setAboutOpen(true)}>Об актёре</button>
                 <button className="btn btn--secondary" onClick={() => decide('skip')}>Пропустить</button>
               </div>
             </div>
@@ -99,12 +103,23 @@ export default function FeedCastingPage({ params }: { params: { id: string } }) 
                 <p className="p" style={{textAlign:'center'}}>{[(current as any).sex, (current as any).age_range, (current as any).cities].filter(Boolean).join(" · ")}</p>
                 <div className="row" style={{marginTop:10, justifyContent:'center', gap:8}}>
                   <button className="btn" onClick={() => decide('like')}>👍 Нравится</button>
+                  <button className="btn btn--ghost" onClick={() => setAboutOpen(true)}>Об актёре</button>
                   <button className="btn btn--secondary" onClick={() => decide('skip')}>Пропустить</button>
                 </div>
               </div>
             </>
           )}
         </div>
+      )}
+
+      {aboutOpen && actorId && createPortal(
+        <div className="overlay" onClick={()=>setAboutOpen(false)}>
+          <div className="modal" style={{width:'90vw', maxWidth:980, height:'85vh'}} onClick={(e)=>e.stopPropagation()}>
+            <div className="modalBody" style={{padding:0, height:'100%'}}>
+              <iframe src={bp(`/actor/${actorId}`)} title="Об актёре" style={{border:0, width:'100%', height:'100%', borderRadius:12}} />
+            </div>
+          </div>
+        </div>, document.body
       )}
     </div>
   );

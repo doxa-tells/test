@@ -72,8 +72,17 @@ export async function POST(req: Request) {
         await query(`INSERT INTO casting_files(casting_id, filename, filetype, url) VALUES ($1,$2,$3,$4)`, [c.id, (f as any).name, (f as any).type || null, url]);
       }
     }
-    const BASE = process.env.NEXT_PUBLIC_BASE_PATH || '/catalog';
-    return NextResponse.redirect(new URL(`${BASE}/my-castings`, req.url));
+    // Ensure redirect stays on the current domain. If NEXT_PUBLIC_BASE_PATH is absolute, use only its pathname.
+    const envBase = process.env.NEXT_PUBLIC_BASE_PATH || '/catalog';
+    let basePath = envBase;
+    try {
+      if (/^https?:\/\//i.test(envBase)) basePath = new URL(envBase).pathname || '';
+    } catch {}
+    const u = new URL(req.url);
+    u.pathname = `${basePath.replace(/\/$/, '')}/my-castings`;
+    u.search = '';
+    u.hash = '';
+    return NextResponse.redirect(u);
   }
   // fallback JSON body
   const body = await req.json().catch(()=>({} as any));

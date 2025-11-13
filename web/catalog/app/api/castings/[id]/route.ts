@@ -90,8 +90,14 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       }
     }
 
-    const BASE = process.env.NEXT_PUBLIC_BASE_PATH || '/catalog';
-    return NextResponse.redirect(new URL(`${BASE}/my-castings`, req.url));
+    const envBase = process.env.NEXT_PUBLIC_BASE_PATH || '/catalog';
+    let basePath = envBase;
+    try { if (/^https?:\/\//i.test(envBase)) basePath = new URL(envBase).pathname || ''; } catch {}
+    const u = new URL(req.url);
+    u.pathname = `${basePath.replace(/\/$/, '')}/my-castings`;
+    u.search = '';
+    u.hash = '';
+    return NextResponse.redirect(u);
   }
 
   // JSON update fallback

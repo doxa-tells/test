@@ -1,7 +1,8 @@
 // web/catalog/app/actors/castings/[id]/page.tsx
 import React from "react";
 import ActorAuditionForm from "../../../../components/ActorAuditionForm";
-import ActorDirectorProfile from "../../../../components/ActorDirectorProfile";
+import NextDynamic from "next/dynamic";
+const ActorDirectorProfile = NextDynamic(() => import("../../../../components/ActorDirectorProfile"), { ssr: false });
 import { headers } from "next/headers";
 
 export const dynamic = "force-dynamic";

@@ -1,5 +1,5 @@
 // web/catalog/app/embed/layout.tsx
-import "../../app/globals.css";
+import "../../globals.css";
 import type { ReactNode } from "react";
 
 export const metadata = {
@@ -9,12 +9,10 @@ export const metadata = {
 
 export default function EmbedLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="ru">
-      <body>
-        <div style={{maxWidth: 980, margin: '0 auto', padding: 12}}>
-          <main>{children}</main>
-        </div>
-      </body>
-    </html>
+    <div style={{maxWidth: 980, margin: '0 auto', padding: 12}}>
+      {/* Скрываем глобальные header/footer на встраиваемых страницах */}
+      <style>{`.header, .footer { display:none !important }`}</style>
+      {children}
+    </div>
   );
 }

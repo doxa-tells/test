@@ -8,6 +8,7 @@ export default function PublicCastingDetailPage({ params }: { params: { id: stri
   const [files, setFiles] = useState<any[]>([]);
   const [file, setFile] = useState<File|null>(null);
   const [msg, setMsg] = useState<string>("");
+  const [needLink, setNeedLink] = useState<boolean>(false);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
 
@@ -37,6 +38,7 @@ export default function PublicCastingDetailPage({ params }: { params: { id: stri
         setFile(null);
       } else {
         setMsg(d.error || 'Ошибка');
+        setNeedLink(d?.error === 'link_required');
       }
     } catch { setMsg('Ошибка сети'); }
     finally { setUploading(false); }
@@ -72,6 +74,11 @@ export default function PublicCastingDetailPage({ params }: { params: { id: stri
               {msg && <span className="p">{msg}</span>}
             </form>
             <div className="p" style={{color:'#777'}}>Для загрузки требуется авторизация и привязанный актёрский ID (см. Настройки → Привязка актёра).</div>
+            {needLink && (
+              <div className="row" style={{marginTop:8}}>
+                <a className="btn" href={bp('/settings/actor-link')}>Привязать актёра</a>
+              </div>
+            )}
           </div>
 
           <div className="row" style={{marginTop:12}}>

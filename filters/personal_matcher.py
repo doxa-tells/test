@@ -295,7 +295,16 @@ def _append_match_log(entry: dict):
     except Exception as _:
         pass
 
-async def _save_and_notify(user_id: int, source_chat: int, message_ids, text_cache: str, thread_id: Optional[int], cats: Optional[set] = None):
+async def _save_and_notify(
+    user_id: int,
+    source_chat: int,
+    message_ids,
+    text_cache: str,
+    thread_id: Optional[int],
+    cats: Optional[set] = None,
+    cohort: Optional[str] = None,
+    ai_ok: Optional[bool] = None,
+):
     """
     Сохраняем матч. Если пользователь подписан — пушим уведомление.
     Если нет — только увеличиваем weekly-счётчик.
@@ -311,6 +320,21 @@ async def _save_and_notify(user_id: int, source_chat: int, message_ids, text_cac
 
     if is_sub_active(user_id):
         try:
+            _append_match_log({
+                "ts": datetime.utcnow().isoformat(),
+                "event": "notify_attempt",
+                "user_id": int(user_id),
+                "source_chat": int(source_chat),
+                "message_ids": list(message_ids) if isinstance(message_ids, (list, tuple)) else message_ids,
+                "thread_id": int(thread_id) if thread_id is not None else None,
+                "cats": sorted(list(cats)) if cats else None,
+                "cohort": cohort,
+                "ai_ok": bool(ai_ok) if ai_ok is not None else None,
+                "match_id": match_id,
+            })
+        except Exception:
+            pass
+        try:
             msg = await client.send_message(
                 int(user_id),
                 NOTIFY_TEXT,
@@ -318,9 +342,31 @@ async def _save_and_notify(user_id: int, source_chat: int, message_ids, text_cac
                 link_preview=False,
             )
             store_notice(int(user_id), int(msg.id))  # позже user_reg_bot их подчистит
-            print(f"🔔 push user_id={user_id} (match_id={match_id}, notice_id={msg.id})")
+            print(f"🔔 push user_id={user_id} cohort={cohort} ai_ok={ai_ok} cats={sorted(list(cats)) if cats else []} (match_id={match_id}, notice_id={msg.id})")
+            try:
+                _append_match_log({
+                    "ts": datetime.utcnow().isoformat(),
+                    "event": "notify_success",
+                    "user_id": int(user_id),
+                    "notice_id": int(msg.id),
+                    "match_id": match_id,
+                    "cohort": cohort,
+                })
+            except Exception:
+                pass
         except Exception as e:
             print(f"⚠️ push error user_id={user_id}: {e}")
+            try:
+                _append_match_log({
+                    "ts": datetime.utcnow().isoformat(),
+                    "event": "notify_error",
+                    "user_id": int(user_id),
+                    "error": str(e),
+                    "match_id": match_id,
+                    "cohort": cohort,
+                })
+            except Exception:
+                pass
     else:
         bump_weekly_counter(user_id, amount=1)
         print(f"🗓 bump weekly counter user_id={user_id} (match_id={match_id})")
@@ -422,8 +468,8 @@ async def handle_new_casting(event):
         except Exception:
             pass
 
-        for cohort in (premium_with_prefs, standard):
-            for u in cohort:
+        for cohort_list, cohort_name in ((premium_with_prefs, "premium_with_prefs"), (standard, "standard")):
+            for u in cohort_list:
                 user_id = u["user_id"]
                 print(f"\n--- 🔎 Проверка user_id={user_id} ---")
                 # Полный контроль ИИ — только check_match_ai (debug для подробного лога)
@@ -440,6 +486,8 @@ async def handle_new_casting(event):
                         text_cache=casting_text,
                         thread_id=topic_id or None,
                         cats=cats,
+                        cohort=cohort_name,
+                        ai_ok=ok,
                     )
                 except Exception as e:
                     print(f"⚠️ Ошибка save/notify user_id={user_id}: {e}")
@@ -525,8 +573,8 @@ async def handle_album(event):
         except Exception:
             pass
 
-        for cohort in (premium_with_prefs, standard):
-            for u in cohort:
+        for cohort_list, cohort_name in ((premium_with_prefs, "premium_with_prefs"), (standard, "standard")):
+            for u in cohort_list:
                 user_id = u["user_id"]
                 print(f"\n--- 🔎 Проверка (альбом) user_id={user_id} ---")
                 ok = check_match_ai(u, casting_text, debug=True)
@@ -542,6 +590,8 @@ async def handle_album(event):
                         text_cache=casting_text,
                         thread_id=topic_id or None,
                         cats=cats,
+                        cohort=cohort_name,
+                        ai_ok=ok,
                     )
                 except Exception as e:
                     print(f"⚠️ Ошибка save/notify user_id={user_id}: {e}")

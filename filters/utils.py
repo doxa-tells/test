@@ -196,7 +196,7 @@ def _ensure_matches_table(cur):
         """
         CREATE TABLE IF NOT EXISTS matches (
             id SERIAL PRIMARY KEY,
-            user_id INTEGER NOT NULL,
+            user_id BIGINT NOT NULL,
             source_chat BIGINT,
             thread_id INTEGER,
             message_ids JSONB,
@@ -205,6 +205,11 @@ def _ensure_matches_table(cur):
         )
         """
     )
+    # try to upgrade existing column types in-place to avoid integer overflows
+    try:
+        cur.execute("ALTER TABLE matches ALTER COLUMN user_id TYPE BIGINT USING user_id::bigint")
+    except Exception:
+        pass
     # индекс для быстрых выборок
     cur.execute(
         "CREATE INDEX IF NOT EXISTS idx_matches_user_created ON matches(user_id, created_at DESC)"
@@ -297,12 +302,21 @@ def _ensure_notices_table(cur):
         """
         CREATE TABLE IF NOT EXISTS notices (
             id SERIAL PRIMARY KEY,
-            user_id INTEGER NOT NULL,
-            msg_id INTEGER NOT NULL,
+            user_id BIGINT NOT NULL,
+            msg_id BIGINT NOT NULL,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
         """
     )
+    # try to upgrade existing column types in-place (idempotent if already BIGINT)
+    try:
+        cur.execute("ALTER TABLE notices ALTER COLUMN user_id TYPE BIGINT USING user_id::bigint")
+    except Exception:
+        pass
+    try:
+        cur.execute("ALTER TABLE notices ALTER COLUMN msg_id TYPE BIGINT USING msg_id::bigint")
+    except Exception:
+        pass
     cur.execute("CREATE INDEX IF NOT EXISTS idx_notices_user ON notices(user_id)")
 
 def store_notice(user_id: int, msg_id: int) -> None:

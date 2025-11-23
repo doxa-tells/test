@@ -4,14 +4,59 @@ import { Button, Section, Badge } from './Shared';
 // Иконки
 import { Sparkles, Bell, Filter, Globe, Shield, Calendar, MessageCircle, Zap, CheckCircle, User, CreditCard, Lock, Settings, MapPin, Clock, Smartphone, TrendingUp, Cpu, BatteryCharging, Mail, Image, Wallet, MessageSquare, Home, Eye, Heart, Mountain, FileText, Bot, X, Send, Instagram, Twitter, Facebook, Linkedin, Youtube } from 'lucide-react';
 import avatar1 from '../assets/avatar1.png';
-import partner1 from '../assets/partners/image1.png';
-import partner2 from '../assets/partners/image2.png';
-import partner3 from '../assets/partners/image3.png';
-import partner4 from '../assets/partners/image4.png';
-import partner5 from '../assets/partners/image5.png';
-import partner6 from '../assets/partners/image6.png';
-import partner7 from '../assets/partners/image7.png';
-import partner8 from '../assets/partners/image8.png';
+import partner1 from '../assets/partners/image1-min-min.png';
+import partner2 from '../assets/partners/image2-min-min.png';
+import partner3 from '../assets/partners/image3-min-min.png';
+import partner4 from '../assets/partners/image4-min-min.png';
+import partner5 from '../assets/partners/image5-min-min.png';
+import partner6 from '../assets/partners/image6-min-min.png';
+import partner7 from '../assets/partners/image7-min-min.png';
+import partner8 from '../assets/partners/image8-min-min.png';
+import telegramLogo from '../assets/logo/telegram-svgrepo-com.svg';
+import whatsappLogo from '../assets/logo/whatsapp-svgrepo-com.svg';
+import instagramLogo from '../assets/logo/instagram-1-svgrepo-com.svg';
+
+// Компонент для анимации подсчета числа (зацикленный)
+const CountUpNumber = ({ target, delay = 0 }) => {
+    const [count, setCount] = useState(0);
+    const [isAnimating, setIsAnimating] = useState(false);
+
+    useEffect(() => {
+        const startAnimation = () => {
+            setIsAnimating(true);
+            const duration = 1500; // Длительность анимации
+            const steps = 60; // Количество шагов
+            const increment = target / steps;
+            let current = 0;
+
+            const timer = setInterval(() => {
+                current += increment;
+                if (current >= target) {
+                    setCount(target);
+                    clearInterval(timer);
+                    setIsAnimating(false);
+
+                    // Пауза 2 секунды, затем сброс и повтор
+                    setTimeout(() => {
+                        setCount(0);
+                        setTimeout(startAnimation, 300); // Небольшая задержка перед повтором
+                    }, 2000);
+                } else {
+                    setCount(Math.floor(current));
+                }
+            }, duration / steps);
+
+            return () => clearInterval(timer);
+        };
+
+        // Первый запуск с задержкой
+        const initialTimeout = setTimeout(startAnimation, delay);
+
+        return () => clearTimeout(initialTimeout);
+    }, [target, delay]);
+
+    return <span>{count}</span>;
+};
 
 // Компонент для анимации морфинга частиц
 const ParticleMorph = ({ texts = ["2000+", "MODELS", "ACTORS", "CREATORS"] }) => {
@@ -204,6 +249,250 @@ const ParticleMorph = ({ texts = ["2000+", "MODELS", "ACTORS", "CREATORS"] }) =>
                 zIndex: 1
             }}
         />
+    );
+};
+
+// Компонент карусели статистики
+const StatCarousel = () => {
+    const [currentSlide, setCurrentSlide] = useState(0);
+
+    const slides = [
+        {
+            number: 70,
+            text: "Кастингов\nкаждый день",
+            showIcons: false
+        },
+        {
+            number: 44,
+            text: "Источников собранных\nв одном месте",
+            showIcons: true
+        }
+    ];
+
+    useEffect(() => {
+        const interval = setInterval(() => {
+            setCurrentSlide((prev) => (prev + 1) % slides.length);
+        }, 4000); // Смена каждые 4 секунды
+
+        return () => clearInterval(interval);
+    }, []);
+
+    const direction = currentSlide === 0 ? 1 : -1;
+
+    return (
+        <>
+            {/* Пульсирующий светящийся фон */}
+            <motion.div
+                animate={{
+                    scale: [1, 1.3, 1],
+                    opacity: [0.1, 0.2, 0.1]
+                }}
+                transition={{
+                    duration: 2,
+                    repeat: Infinity,
+                    ease: "easeInOut"
+                }}
+                style={{
+                    position: 'absolute',
+                    width: '120px',
+                    height: '120px',
+                    borderRadius: '50%',
+                    background: 'radial-gradient(circle, rgba(47, 239, 85, 0.3), transparent)',
+                    filter: 'blur(20px)'
+                }}
+            />
+
+            {/* Слайды */}
+            <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <AnimatePresence mode="wait" custom={direction}>
+                    <motion.div
+                        key={currentSlide}
+                        custom={direction}
+                        initial={{ x: direction > 0 ? 300 : -300, opacity: 0 }}
+                        animate={{ x: 0, opacity: 1 }}
+                        exit={{ x: direction > 0 ? -300 : 300, opacity: 0 }}
+                        transition={{ duration: 0.5, ease: "easeInOut" }}
+                        style={{
+                            position: 'absolute',
+                            width: '100%',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center'
+                        }}
+                    >
+                        {/* Логотипы WhatsApp и Telegram (только для второго слайда, ВЫШЕ числа) */}
+                        {slides[currentSlide].showIcons && (
+                            <motion.div
+                                initial={{ opacity: 0, scale: 0.5 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                transition={{
+                                    duration: 0.5,
+                                    delay: 0.3,
+                                    type: "spring",
+                                    bounce: 0.5
+                                }}
+                                style={{
+                                    display: 'flex',
+                                    gap: '16px',
+                                    marginBottom: '12px',
+                                    alignItems: 'center'
+                                }}
+                            >
+                                <img
+                                    src={whatsappLogo}
+                                    alt="WhatsApp"
+                                    style={{
+                                        width: '36px',
+                                        height: '36px',
+                                        filter: 'drop-shadow(0 2px 8px rgba(37, 211, 102, 0.5))'
+                                    }}
+                                />
+                                <img
+                                    src={instagramLogo}
+                                    alt="Instagram"
+                                    style={{
+                                        width: '36px',
+                                        height: '36px',
+                                        filter: 'drop-shadow(0 2px 8px rgba(225, 48, 108, 0.5))'
+                                    }}
+                                />
+                                <img
+                                    src={telegramLogo}
+                                    alt="Telegram"
+                                    style={{
+                                        width: '36px',
+                                        height: '36px',
+                                        filter: 'drop-shadow(0 2px 8px rgba(0, 136, 204, 0.5))'
+                                    }}
+                                />
+                            </motion.div>
+                        )}
+
+                        {/* Анимированное число */}
+                        <motion.div
+                            initial={{ scale: 0, rotate: -180 }}
+                            animate={{ scale: 1, rotate: 0 }}
+                            transition={{
+                                duration: 0.8,
+                                type: "spring",
+                                bounce: 0.6,
+                                delay: 0.2
+                            }}
+                            style={{
+                                fontSize: '70px', // Увеличили размер
+                                fontWeight: '900',
+                                background: 'linear-gradient(135deg, #2fef55ff, #2df5d3ff, #00f9a2ff)',
+                                WebkitBackgroundClip: 'text',
+                                WebkitTextFillColor: 'transparent',
+                                backgroundClip: 'text',
+                                marginBottom: '12px',
+                                lineHeight: '1',
+                                position: 'relative',
+                                filter: 'drop-shadow(0 0 12px rgba(47, 239, 85, 0.7))'
+                            }}
+                        >
+                            <CountUpNumber target={slides[currentSlide].number} delay={300} />+
+                        </motion.div>
+
+                        {/* Описание */}
+                        <motion.div
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{
+                                duration: 0.6,
+                                delay: slides[currentSlide].showIcons ? 0.5 : 0.4
+                            }}
+                            style={{
+                                fontSize: '13px',
+                                color: 'rgba(255,255,255,0.95)',
+                                textAlign: 'center',
+                                lineHeight: '1.5',
+                                fontWeight: '800',
+                                letterSpacing: '0.8px',
+                                whiteSpace: 'pre-line'
+                            }}
+                        >
+                            {slides[currentSlide].text}
+                        </motion.div>
+                    </motion.div>
+                </AnimatePresence>
+            </div>
+        </>
+    );
+};
+
+// Компонент вращающегося текста (Cube Effect)
+const CubeText = () => {
+    const rotatingWords = ["кастинги", "съемки", "возможности"];
+    const [index, setIndex] = useState(0);
+
+    useEffect(() => {
+        const interval = setInterval(() => {
+            setIndex((prev) => (prev + 1) % rotatingWords.length);
+        }, 2500);
+        return () => clearInterval(interval);
+    }, []);
+
+    return (
+        <div style={{
+            display: 'flex',
+            flexDirection: 'row', // В одну строку
+            alignItems: 'center',
+            justifyContent: 'flex-start', // Сдвигаем влево
+            paddingLeft: '30px', // Отступ от края
+            width: '100%'
+        }}>
+            <span style={{
+                fontSize: '22px', // Чуть меньше, чтобы влезло
+                fontWeight: '900', // Сделали жирнее
+                color: 'rgba(255,255,255,0.8)',
+                letterSpacing: '2px',
+                marginRight: '15px', // Отступ справа
+                whiteSpace: 'nowrap'
+            }}>
+                Глобальные
+            </span>
+
+            {/* Контейнер фиксированной ширины для вращающихся слов */}
+            <div style={{ width: '240px', height: '36px', position: 'relative', perspective: '1000px' }}>
+                <AnimatePresence mode="popLayout">
+                    <motion.div
+                        key={index}
+                        initial={{ opacity: 0, rotateX: -90, y: -20 }}
+                        animate={{ opacity: 1, rotateX: 0, y: 0 }}
+                        exit={{ opacity: 0, rotateX: 90, y: 20 }}
+                        transition={{ duration: 0.6, ease: "easeInOut" }}
+                        style={{
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            width: '100%',
+                            height: '100%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'flex-start', // Выравниваем по левому краю контейнера
+                            transformOrigin: '50% 50% -20px',
+                            backfaceVisibility: 'hidden'
+                        }}
+                    >
+                        <span style={{
+                            fontSize: '26px',
+                            fontWeight: '900',
+                            background: 'linear-gradient(135deg, #2fef55ff, #2df5d3ff, #00f9a2ff)',
+                            WebkitBackgroundClip: 'text',
+                            WebkitTextFillColor: 'transparent',
+                            backgroundClip: 'text',
+                            letterSpacing: '1px',
+                            whiteSpace: 'nowrap',
+                            textShadow: 'none' // Убираем тень, так как она не работает с градиентом
+                        }}>
+                            {rotatingWords[index]}
+                        </span>
+                    </motion.div>
+                </AnimatePresence>
+            </div>
+        </div>
     );
 };
 
@@ -951,28 +1240,21 @@ const Hero = () => {
 
                         {/* Text (Left side, relative z-index higher) */}
                         <div style={{
-                            position: 'relative',
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
                             zIndex: 2,
-                            paddingLeft: '0px', // Абсолютно влево
-                            maxWidth: '40%',
-                            pointerEvents: 'none'
+                            paddingLeft: '0',
+                            width: '100%',
+                            maxWidth: '100%',
+                            pointerEvents: 'none',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                            height: '100%'
                         }}>
-                            <h3 style={{
-                                fontSize: '20px',
-                                color: '#fff',
-                                marginBottom: '6px',
-                                fontWeight: 'bold',
-                                textShadow: '0 2px 4px rgba(0,0,0,0.5)'
-                            }}>
-                                World Networks
-                            </h3>
-                            <p style={{
-                                fontSize: '13px',
-                                color: 'rgba(255,255,255,0.7)',
-                                lineHeight: '1.4'
-                            }}>
-                                Global connection &<br />instant data transfer
-                            </p>
+                            <CubeText />
                         </div>
                     </motion.div>
 
@@ -1160,7 +1442,7 @@ const Hero = () => {
                         <ParticleMorph />
                     </motion.div>
 
-                    {/* 12b. Locations - Правый блок */}
+                    {/* 12b. Locations - Правый блок (Статистика - Карусель) */}
                     <motion.div
                         className="pc-tile g-brown"
                         initial={{ opacity: 0, y: 20 }}
@@ -1171,10 +1453,14 @@ const Hero = () => {
                             gridRow: 'span 1',
                             ...tileStyle,
                             justifyContent: 'center',
-                            alignItems: 'center'
+                            alignItems: 'center',
+                            flexDirection: 'column',
+                            padding: '20px',
+                            position: 'relative',
+                            overflow: 'hidden'
                         }}
                     >
-                        <MapPin size={24} color="#fff" style={{ opacity: 0.5 }} />
+                        <StatCarousel />
                     </motion.div>
 
                     {/* 13. Global Casting (Merged Block with iOS Stack Animation) */}
@@ -1471,7 +1757,14 @@ const Hero = () => {
                 /* Градиенты */
                 .g-gradient-main { background: linear-gradient(135deg, #2fef55ff, #2df5d3ff, #00f9a2ff); }
                 .g-blue-light { background-color: #2e6ffb; }
-                .g-brown { background-color: #8B4513; }
+                .g-brown { 
+                    background: linear-gradient(135deg, rgba(74, 148, 199, 0.25), rgba(74, 148, 199, 0.15));
+                    backdrop-filter: blur(20px);
+                    -webkit-backdrop-filter: blur(20px);
+                    border: 1px solid rgba(255, 255, 255, 0.18);
+                    box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37),
+                                inset 0 1px 1px 0 rgba(255, 255, 255, 0.3);
+                }
                 .g-green { background-color: #28a745; }
                 .g-yellow { background: linear-gradient(135deg, #15140fff, #FDE047); }
                 .g-dark { background-color: rgba(30, 30, 30, 1); }

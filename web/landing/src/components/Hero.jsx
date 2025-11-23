@@ -15,6 +15,11 @@ import partner8 from '../assets/partners/image8-min-min.png';
 import telegramLogo from '../assets/logo/telegram-svgrepo-com.svg';
 import whatsappLogo from '../assets/logo/whatsapp-svgrepo-com.svg';
 import instagramLogo from '../assets/logo/instagram-1-svgrepo-com.svg';
+import leoImage from '../assets/photosmobile/leonardo dicaprio.jpg';
+import extrasImage from '../assets/photosmobile/ams.jpg';
+import dramaImage from '../assets/photosmobile/Gemini_Generated_Image_fq0npifq0npifq0n.png';
+import likeIcon from '../assets/photosmobile/like.svg';
+import dislikeIcon from '../assets/photosmobile/dislike.svg';
 
 // Компонент для анимации подсчета числа (зацикленный)
 const CountUpNumber = ({ target, delay = 0 }) => {
@@ -380,7 +385,7 @@ const StatCarousel = () => {
                                 delay: 0.2
                             }}
                             style={{
-                                fontSize: '70px', // Увеличили размер
+                                fontSize: '64px', // Уменьшили размер
                                 fontWeight: '900',
                                 background: 'linear-gradient(135deg, #2fef55ff, #2df5d3ff, #00f9a2ff)',
                                 WebkitBackgroundClip: 'text',
@@ -389,7 +394,7 @@ const StatCarousel = () => {
                                 marginBottom: '12px',
                                 lineHeight: '1',
                                 position: 'relative',
-                                filter: 'drop-shadow(0 0 12px rgba(47, 239, 85, 0.7))'
+                                filter: 'drop-shadow(0 0 6px rgba(47, 239, 85, 0.3))'
                             }}
                         >
                             <CountUpNumber target={slides[currentSlide].number} delay={300} />+
@@ -405,7 +410,10 @@ const StatCarousel = () => {
                             }}
                             style={{
                                 fontSize: '13px',
-                                color: 'rgba(255,255,255,0.95)',
+                                background: 'linear-gradient(135deg, #2fef55ff, #2df5d3ff, #00f9a2ff)',
+                                WebkitBackgroundClip: 'text',
+                                WebkitTextFillColor: 'transparent',
+                                backgroundClip: 'text',
                                 textAlign: 'center',
                                 lineHeight: '1.5',
                                 fontWeight: '800',
@@ -855,10 +863,10 @@ const Hero = () => {
     // Swipe Animation State
     const [swipeIndex, setSwipeIndex] = useState(0);
     const swipeCards = [
-        { id: 1, title: 'Сериал на Netflix', role: 'Главная роль', action: 'like', color: '#30d158' },
-        { id: 2, title: 'Реклама Йогурта', role: 'Массовка', action: 'dislike', color: '#ff3b30' },
-        { id: 3, title: 'Драма HBO', role: 'Второй план', action: 'like', color: '#30d158' },
-        { id: 4, title: 'Студенческий метр', role: 'Эпизод', action: 'dislike', color: '#ff3b30' },
+        { id: 1, title: 'Сериал на Netflix', role: 'Главная роль', action: 'like', color: '#30d158', image: leoImage },
+        { id: 2, title: 'Реклама Йогурта', role: 'Массовка', action: 'dislike', color: '#ff3b30', image: extrasImage },
+        { id: 3, title: 'Драма HBO', role: 'Второй план', action: 'like', color: '#30d158', image: dramaImage },
+        { id: 4, title: 'Студенческий метр', role: 'Эпизод', action: 'dislike', color: '#ff3b30', image: extrasImage },
     ];
 
     useEffect(() => {
@@ -911,104 +919,264 @@ const Hero = () => {
                             gridColumn: '1',
                             gridRow: '1 / span 2',
                             ...tileStyle,
-                            padding: '0',
+                            padding: '20px',
                             overflow: 'hidden',
-                            position: 'relative'
+                            position: 'relative',
+                            display: 'flex',
+                            flexDirection: 'column'
                         }}
                     >
-                        <div style={{ padding: '30px 30px 0 30px', zIndex: 2, position: 'relative' }}>
+                        <div style={{ zIndex: 2, position: 'relative', marginBottom: '15px' }}>
                             <h3 style={{ fontSize: '20px', color: '#fff', marginBottom: '8px' }}>Swipe</h3>
                             <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.7)' }}>Find your perfect role</p>
                         </div>
 
+                        {/* Рамка телефона */}
                         <div style={{
                             flex: 1,
                             position: 'relative',
                             display: 'flex',
                             justifyContent: 'center',
                             alignItems: 'center',
-                            marginTop: '20px',
                             perspective: '1000px'
                         }}>
-                            <AnimatePresence mode="popLayout">
-                                {swipeCards.map((card, index) => {
-                                    if (index !== swipeIndex) return null;
-                                    return (
-                                        <motion.div
-                                            key={card.id}
-                                            initial={{ scale: 0.9, opacity: 0, y: 20 }}
-                                            animate={{ scale: 1, opacity: 1, y: 0, x: 0, rotate: 0 }}
-                                            exit={{
-                                                x: card.action === 'like' ? 250 : -250,
-                                                rotate: card.action === 'like' ? 20 : -20,
-                                                opacity: 0,
-                                                transition: { duration: 1.2, ease: "easeInOut" }
-                                            }}
-                                            transition={{ duration: 0.5 }}
-                                            style={{
-                                                position: 'absolute',
-                                                width: '160px',
-                                                height: '220px',
-                                                background: '#fff',
-                                                borderRadius: '16px',
-                                                boxShadow: '0 10px 30px rgba(0,0,0,0.2)',
-                                                padding: '12px',
-                                                display: 'flex',
-                                                flexDirection: 'column',
-                                                zIndex: 10,
-                                                top: 0,
-                                                transformOrigin: 'bottom center'
-                                            }}
-                                        >
-                                            {/* Stamp Overlay */}
-                                            <motion.div
-                                                initial={{ opacity: 0 }}
-                                                exit={{ opacity: 1 }}
-                                                style={{
-                                                    position: 'absolute',
-                                                    top: '40px',
-                                                    left: card.action === 'like' ? '20px' : 'auto',
-                                                    right: card.action === 'dislike' ? '20px' : 'auto',
-                                                    border: `4px solid ${card.action === 'like' ? '#30d158' : '#ff3b30'}`,
-                                                    color: card.action === 'like' ? '#30d158' : '#ff3b30',
-                                                    padding: '4px 8px',
-                                                    borderRadius: '8px',
-                                                    fontSize: '24px',
-                                                    fontWeight: '900',
-                                                    transform: `rotate(${card.action === 'like' ? '-15deg' : '15deg'})`,
-                                                    zIndex: 20,
-                                                    pointerEvents: 'none'
-                                                }}
-                                            >
-                                                {card.action === 'like' ? 'LIKE' : 'NOPE'}
-                                            </motion.div>
+                            {/* iPhone */}
+                            <div style={{
+                                width: '180px',
+                                height: '340px',
+                                background: 'linear-gradient(145deg, #0a0a0a, #1a1a1a)',
+                                borderRadius: '32px',
+                                padding: '8px',
+                                boxShadow: '0 25px 70px rgba(0,0,0,0.5), inset 0 0 0 1px rgba(255,255,255,0.05)',
+                                position: 'relative',
+                                border: '3px solid #000'
+                            }}>
+                                {/* Кнопка питания */}
+                                <div style={{
+                                    position: 'absolute',
+                                    right: '-3px',
+                                    top: '70px',
+                                    width: '3px',
+                                    height: '50px',
+                                    background: '#0a0a0a',
+                                    borderRadius: '0 2px 2px 0'
+                                }} />
 
-                                            <div style={{ width: '100%', height: '110px', background: '#333', borderRadius: '8px', marginBottom: '10px', position: 'relative', overflow: 'hidden' }}>
-                                                <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(135deg, #666 0%, #444 100%)' }} />
-                                            </div>
-                                            <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#000', marginBottom: '2px' }}>{card.role}</div>
-                                            <div style={{ fontSize: '12px', color: '#666', marginBottom: '12px' }}>{card.title}</div>
+                                {/* Dynamic Island */}
+                                <div style={{
+                                    position: 'absolute',
+                                    top: '12px',
+                                    left: '50%',
+                                    transform: 'translateX(-50%)',
+                                    width: '70px',
+                                    height: '22px',
+                                    background: '#000',
+                                    borderRadius: '16px',
+                                    zIndex: 100,
+                                    boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.5)'
+                                }}>
+                                    {/* Камера */}
+                                    <div style={{
+                                        position: 'absolute',
+                                        left: '10px',
+                                        top: '50%',
+                                        transform: 'translateY(-50%)',
+                                        width: '8px',
+                                        height: '8px',
+                                        borderRadius: '50%',
+                                        background: 'radial-gradient(circle, #1a2a3a 0%, #0a0a0a 70%)',
+                                        border: '1px solid #0a1a2a'
+                                    }} />
+                                </div>
 
-                                            <div style={{ marginTop: 'auto', display: 'flex', justifyContent: 'center', gap: '16px' }}>
-                                                <motion.div
-                                                    animate={card.action === 'dislike' ? { scale: [1, 1.2, 1], background: ['#fff', '#ffe5e5', '#fff'] } : {}}
-                                                    transition={{ delay: 0.2, duration: 0.5 }}
-                                                    style={{ width: '32px', height: '32px', borderRadius: '50%', border: '1px solid #e5e5e5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                                                >
-                                                    <X size={16} color="#ff3b30" />
-                                                </motion.div>
-                                                <motion.div
-                                                    animate={card.action === 'like' ? { scale: [1, 1.2, 1], boxShadow: ['0 4px 10px rgba(48, 209, 88, 0.3)', '0 4px 20px rgba(48, 209, 88, 0.6)', '0 4px 10px rgba(48, 209, 88, 0.3)'] } : {}}
-                                                    transition={{ delay: 0.2, duration: 0.5 }}
-                                                    style={{ width: '32px', height: '32px', borderRadius: '50%', border: '1px solid #30d158', background: '#30d158', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 10px rgba(48, 209, 88, 0.3)' }}
-                                                >
-                                                    <CheckCircle size={16} color="#fff" />
-                                                </motion.div>
-                                            </div>
-                                        </motion.div>
-                                    );
-                                })}
-                            </AnimatePresence>
+                                {/* Экран iPhone */}
+                                <div style={{
+                                    width: '100%',
+                                    height: '100%',
+                                    background: 'linear-gradient(180deg, #f8f8f8 0%, #ececec 100%)',
+                                    borderRadius: '26px',
+                                    overflow: 'hidden',
+                                    position: 'relative',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.05)',
+                                    padding: '10px' // Отступы от краев экрана
+                                }}>
+                                    {/* Индикаторы свайпа */}
+                                    <motion.div
+                                        animate={{ opacity: [0.3, 0.6, 0.3], x: [-3, 0, -3] }}
+                                        transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                                        style={{
+                                            position: 'absolute',
+                                            left: '5px',
+                                            top: '50%',
+                                            transform: 'translateY(-50%)',
+                                            color: '#ff3b30',
+                                            fontSize: '20px',
+                                            fontWeight: '900',
+                                            zIndex: 1
+                                        }}
+                                    >
+                                        ←
+                                    </motion.div>
+                                    <motion.div
+                                        animate={{ opacity: [0.3, 0.6, 0.3], x: [3, 0, 3] }}
+                                        transition={{ duration: 2, repeat: Infinity, ease: "easeInOut", delay: 1 }}
+                                        style={{
+                                            position: 'absolute',
+                                            right: '5px',
+                                            top: '50%',
+                                            transform: 'translateY(-50%)',
+                                            color: '#30d158',
+                                            fontSize: '20px',
+                                            fontWeight: '900',
+                                            zIndex: 1
+                                        }}
+                                    >
+                                        →
+                                    </motion.div>
+
+                                    {/* Карточки внутри экрана */}
+                                    <AnimatePresence mode="popLayout">
+                                        {swipeCards.map((card, index) => {
+                                            if (index !== swipeIndex) return null;
+
+                                            // Следующая карточка (показываем под текущей)
+                                            const nextCard = swipeCards[(index + 1) % swipeCards.length];
+
+                                            return (
+                                                <React.Fragment key={`fragment-${card.id}`}>
+                                                    {/* Следующая карточка (фон) */}
+                                                    <motion.div
+                                                        initial={{ scale: 0.9, opacity: 0.5 }}
+                                                        animate={{ scale: 0.95, opacity: 0.7 }}
+                                                        style={{
+                                                            position: 'absolute',
+                                                            width: '100%',
+                                                            height: '100%',
+                                                            background: '#fff',
+                                                            borderRadius: '18px',
+                                                            boxShadow: '0 5px 15px rgba(0,0,0,0.15)',
+                                                            zIndex: 1
+                                                        }}
+                                                    />
+
+                                                    {/* Текущая карточка */}
+                                                    <motion.div
+                                                        key={card.id}
+                                                        initial={{ scale: 0.8, opacity: 0, y: 50 }}
+                                                        animate={{ scale: 1, opacity: 1, y: 0, x: 0, rotate: 0 }}
+                                                        exit={{
+                                                            x: card.action === 'like' ? 200 : -200,
+                                                            rotate: card.action === 'like' ? 35 : -35,
+                                                            opacity: 0,
+                                                            scale: 0.8,
+                                                            transition: { duration: 0.6, ease: [0.4, 0, 0.2, 1] }
+                                                        }}
+                                                        transition={{
+                                                            duration: 0.5,
+                                                            type: "spring",
+                                                            bounce: 0.4,
+                                                            delay: 0.1
+                                                        }}
+                                                        style={{
+                                                            position: 'absolute',
+                                                            width: '100%',
+                                                            height: '100%',
+                                                            background: '#fff',
+                                                            borderRadius: '18px',
+                                                            boxShadow: '0 15px 40px rgba(0,0,0,0.3)',
+                                                            padding: '12px',
+                                                            display: 'flex',
+                                                            flexDirection: 'column',
+                                                            transformOrigin: 'bottom center',
+                                                            zIndex: 2
+                                                        }}
+                                                    >
+                                                        {/* Затемнение при свайпе */}
+                                                        <motion.div
+                                                            initial={{ opacity: 0 }}
+                                                            exit={{
+                                                                opacity: card.action === 'like' ? 0.2 : 0.2,
+                                                                background: card.action === 'like'
+                                                                    ? 'linear-gradient(90deg, transparent, rgba(48, 209, 88, 0.3))'
+                                                                    : 'linear-gradient(90deg, rgba(255, 59, 48, 0.3), transparent)'
+                                                            }}
+                                                            transition={{ duration: 0.3 }}
+                                                            style={{
+                                                                position: 'absolute',
+                                                                inset: 0,
+                                                                borderRadius: '18px',
+                                                                pointerEvents: 'none',
+                                                                zIndex: 1
+                                                            }}
+                                                        />
+
+                                                        {/* Stamp Overlay */}
+                                                        <motion.div
+                                                            initial={{ opacity: 0, scale: 0.3, rotate: 0 }}
+                                                            exit={{
+                                                                opacity: 1,
+                                                                scale: 1.2,
+                                                                rotate: card.action === 'like' ? -15 : 15,
+                                                                transition: { duration: 0.2, delay: 0.1 }
+                                                            }}
+                                                            style={{
+                                                                position: 'absolute',
+                                                                top: '50px',
+                                                                left: card.action === 'like' ? '20px' : 'auto',
+                                                                right: card.action === 'dislike' ? '20px' : 'auto',
+                                                                border: `4px solid ${card.action === 'like' ? '#30d158' : '#ff3b30'}`,
+                                                                color: card.action === 'like' ? '#30d158' : '#ff3b30',
+                                                                padding: '5px 12px',
+                                                                borderRadius: '8px',
+                                                                fontSize: '22px',
+                                                                fontWeight: '900',
+                                                                zIndex: 20,
+                                                                pointerEvents: 'none',
+                                                                background: 'rgba(255,255,255,0.9)'
+                                                            }}
+                                                        >
+                                                            {card.action === 'like' ? 'LIKE' : 'NOPE'}
+                                                        </motion.div>
+
+                                                        {/* Серое окошко с фото */}
+                                                        <div style={{ width: '100%', height: '150px', background: '#333', borderRadius: '12px', marginTop: '30px', marginBottom: '6px', position: 'relative', overflow: 'hidden' }}>
+                                                            <img src={card.image} alt="Casting" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                                        </div>
+                                                        <div style={{ fontSize: '14px', fontWeight: 'bold', color: '#000', marginBottom: '1px', textAlign: 'center' }}>{card.role}</div>
+                                                        <div style={{ fontSize: '11px', color: '#666', marginBottom: '2px', textAlign: 'center' }}>{card.title}</div>
+
+                                                        <div style={{ marginTop: 'auto', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '20px' }}>
+                                                            <motion.div
+                                                                animate={card.action === 'dislike' ? {
+                                                                    scale: [1, 1.2, 1],
+                                                                    rotate: [0, -10, 0]
+                                                                } : {}}
+                                                                transition={{ delay: 0.15, duration: 0.5 }}
+                                                                style={{ width: '44px', height: '44px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', marginBottom: '10px' }}
+                                                            >
+                                                                <img src={dislikeIcon} alt="Dislike" style={{ width: '75%', height: '75%', objectFit: 'contain' }} />
+                                                            </motion.div>
+                                                            <motion.div
+                                                                animate={card.action === 'like' ? {
+                                                                    scale: [1, 1.2, 1],
+                                                                    rotate: [0, 10, 0]
+                                                                } : {}}
+                                                                transition={{ delay: 0.15, duration: 0.5 }}
+                                                                style={{ width: '54px', height: '54px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+                                                            >
+                                                                <img src={likeIcon} alt="Like" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                                                            </motion.div>
+                                                        </div>
+                                                    </motion.div>
+                                                </React.Fragment>
+                                            );
+                                        })}
+                                    </AnimatePresence>
+                                </div>
+                            </div>
                         </div>
                     </motion.div>
 
@@ -1104,22 +1272,107 @@ const Hero = () => {
                         </div>
                     </motion.div>
 
-                    {/* 5. Casting Chat */}
+                    {/* 5. High Income / Money Graph */}
                     <motion.div
-                        className="pc-tile g-cyan"
+                        className="pc-tile"
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.6, delay: 0.4 }}
                         style={{
                             gridColumn: '1',
                             gridRow: '3',
-                            ...tileStyle
+                            ...tileStyle,
+                            background: '#0a0a0a', // Dark background for neon contrast
+                            position: 'relative',
+                            overflow: 'hidden',
+                            border: '1px solid #3ec082'
                         }}
                     >
-                        <MessageCircle size={24} color="#fff" />
-                        <div>
-                            <h3 style={{ fontSize: '16px', color: '#fff', marginBottom: '4px' }}>Chat</h3>
-                            <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.7)' }}>Direct to Directors</p>
+                        {/* Background Grid */}
+                        <div style={{
+                            position: 'absolute',
+                            inset: 0,
+                            backgroundImage: 'linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px)',
+                            backgroundSize: '20px 20px',
+                            opacity: 0.3
+                        }} />
+
+                        {/* Graph Container */}
+                        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'flex-end' }}>
+                            <svg viewBox="0 0 100 50" preserveAspectRatio="none" style={{ width: '100%', height: '70%', marginBottom: '0' }}>
+                                <defs>
+                                    <linearGradient id="graphFillGradient" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stopColor="rgba(62, 192, 130, 0.4)" />
+                                        <stop offset="100%" stopColor="rgba(62, 192, 130, 0)" />
+                                    </linearGradient>
+                                    <linearGradient id="lineGradient" x1="0" y1="0" x2="1" y2="0">
+                                        <stop offset="0%" stopColor="#32CD32" />
+                                        <stop offset="50%" stopColor="#48D1CC" />
+                                        <stop offset="100%" stopColor="#5F9EA0" />
+                                    </linearGradient>
+                                </defs>
+                                {/* Area Fill */}
+                                <motion.path
+                                    d="M0,50 L0,45 C20,45 30,35 50,25 C70,15 80,10 100,0 L100,50 Z"
+                                    fill="url(#graphFillGradient)"
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    transition={{ duration: 1, delay: 0.5 }}
+                                />
+                                {/* Line */}
+                                <motion.path
+                                    d="M0,45 C20,45 30,35 50,25 C70,15 80,10 100,0"
+                                    fill="none"
+                                    stroke="url(#lineGradient)"
+                                    strokeWidth="2"
+                                    initial={{ pathLength: 0 }}
+                                    animate={{ pathLength: 1 }}
+                                    transition={{ duration: 3, ease: "easeOut", repeat: Infinity, repeatDelay: 0.5 }}
+                                />
+                            </svg>
+                        </div>
+
+                        {/* Floating Money Signs (Sequential to Line) */}
+                        {[...Array(6)].map((_, i) => (
+                            <motion.div
+                                key={i}
+                                initial={{ y: -20, opacity: 0 }}
+                                animate={{ y: 30, opacity: 1 }}
+                                transition={{
+                                    duration: 2,
+                                    repeat: Infinity,
+                                    repeatDelay: 0.2,
+                                    delay: i * 0.5,
+                                    ease: "easeOut"
+                                }}
+                                style={{
+                                    position: 'absolute',
+                                    left: `${10 + Math.random() * 80}%`,
+                                    color: '#3ec082',
+                                    fontSize: `${10 + Math.random() * 6}px`,
+                                    fontWeight: 'bold',
+                                    zIndex: 1,
+                                    textShadow: '0 0 4px rgba(62, 192, 130, 0.4)'
+                                }}
+                            >
+                                $
+                            </motion.div>
+                        ))}
+
+                        {/* Content */}
+                        <div style={{ position: 'relative', zIndex: 2 }}>
+                            <motion.div
+                                initial={{ opacity: 0, scale: 0.8 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                transition={{ delay: 0.5, duration: 3, ease: "easeOut" }}
+                                style={{ display: 'flex', alignItems: 'center', gap: '12px' }}
+                            >
+                                <TrendingUp size={20} color="#3ec082" />
+                                <h3 style={{ fontSize: '16px', color: '#fff', marginBottom: '0', fontFamily: 'Alro, sans-serif' }}>Зарабатывай больше на</h3>
+                                <div style={{ fontSize: '18px', fontWeight: '900', color: '#fff', textShadow: '0 0 10px rgba(62, 192, 130, 0.5)' }}>
+                                    <CountUpNumber target={480} />%
+                                </div>
+                            </motion.div>
                         </div>
                     </motion.div>
 
@@ -1758,7 +2011,7 @@ const Hero = () => {
                 .g-gradient-main { background: linear-gradient(135deg, #2fef55ff, #2df5d3ff, #00f9a2ff); }
                 .g-blue-light { background-color: #2e6ffb; }
                 .g-brown { 
-                    background: linear-gradient(135deg, rgba(74, 148, 199, 0.25), rgba(74, 148, 199, 0.15));
+                    background: linear-gradient(135deg, rgba(74, 148, 199, 0.25), rgba(46, 84, 166, 0.80));
                     backdrop-filter: blur(20px);
                     -webkit-backdrop-filter: blur(20px);
                     border: 1px solid rgba(255, 255, 255, 0.18);

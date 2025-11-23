@@ -1514,6 +1514,7 @@ const Hero = () => {
                     {/* --- ПРАВАЯ КОЛОНКА (2 блока) --- */}
 
                     {/* 10. Unified Communications (Slow Strict Sequence) */}
+                    {/* 10. Unified Communications (Spiral -> Center Pop Animation) */}
                     <motion.div
                         className="pc-tile g-purple"
                         initial={{ opacity: 0, x: 20 }}
@@ -1528,104 +1529,106 @@ const Hero = () => {
                             position: 'relative',
                             display: 'flex',
                             alignItems: 'center',
-                            justifyContent: 'center'
+                            justifyContent: 'center',
+                            background: '#0f172a'
                         }}
                     >
                         <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
 
-                            {/* Icons */}
+                            {/* 1. ИКОНКИ (Летят по спирали в центр) */}
                             {[
-                                { Icon: Send, color: '#0088cc', hexAngle: 0 },       // Telegram
-                                { Icon: MessageCircle, color: '#25D366', hexAngle: 60 }, // WhatsApp
-                                { Icon: Mail, color: '#EA4335', hexAngle: 120 },     // Email
-                                { Icon: Instagram, color: '#E4405F', hexAngle: 180 }, // Instagram
-                                { Icon: Twitter, color: '#1DA1F2', hexAngle: 240 },   // Twitter
-                                { Icon: Facebook, color: '#1877F2', hexAngle: 300 }   // Facebook
-                            ].map(({ Icon, color, hexAngle }, i) => (
+                                { Icon: Send, color: '#0088cc' },
+                                { Icon: MessageCircle, color: '#25D366' },
+                                { Icon: Mail, color: '#EA4335' },
+                                { Icon: Instagram, color: '#E4405F' },
+                                { Icon: Twitter, color: '#1DA1F2' },
+                                { Icon: Facebook, color: '#1877F2' }
+                            ].map(({ Icon, color }, i) => (
                                 <motion.div
                                     key={i}
-                                    animate={{
-                                        x: [
-                                            Math.cos((hexAngle * Math.PI) / 180) * 70, // 0% Hexagon
-                                            Math.cos((hexAngle * Math.PI) / 180) * 70, // 20% Wait (2s)
-                                            0,                                         // 30% Merge Center (3s)
-                                            0                                          // 100%
-                                        ],
-                                        y: [
-                                            Math.sin((hexAngle * Math.PI) / 180) * 70, // 0% Hexagon
-                                            Math.sin((hexAngle * Math.PI) / 180) * 70, // 20% Wait (2s)
-                                            0,                                         // 30% Merge Center (3s)
-                                            0                                          // 100%
-                                        ],
-                                        scale: [1, 1, 0, 0],
-                                        opacity: [1, 1, 0, 0],
-                                        rotate: [0, 0, 360, 360]
-                                    }}
-                                    transition={{
-                                        duration: 10,
-                                        times: [0, 0.2, 0.3, 1],
-                                        repeat: Infinity,
-                                        ease: "easeInOut"
-                                    }}
                                     style={{
                                         position: 'absolute',
-                                        width: '44px',
-                                        height: '44px',
-                                        borderRadius: '12px',
-                                        background: color,
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        flexShrink: 0,
-                                        boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
+                                        width: '60px',  // ⬅️ УВЕЛИЧИЛ: Было 40px
+                                        height: '60px', // ⬅️ УВЕЛИЧИЛ: Было 40px
+                                        rotate: i * 60,
+                                        transformOrigin: 'center center',
+                                        zIndex: 2
                                     }}
                                 >
-                                    <Icon size={22} color="#fff" />
+                                    <motion.div
+                                        animate={{
+                                            // ⬅️ УВЕЛИЧИЛ дистанцию (135), чтобы большие иконки не толпились
+                                            x: [135, 0, 0, 135],
+                                            rotate: [0, 360, 360, 0],
+                                            scale: [1, 0, 0, 0],
+                                            opacity: [1, 1, 0, 0]
+                                        }}
+                                        transition={{
+                                            duration: 4,
+                                            times: [0, 0.4, 0.9, 1],
+                                            repeat: Infinity,
+                                            ease: "easeInOut"
+                                        }}
+                                        style={{
+                                            width: '100%',
+                                            height: '100%',
+                                            borderRadius: '16px', // Чуть больше скругление
+                                            background: color,
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            boxShadow: '0 6px 16px rgba(0,0,0,0.3)'
+                                        }}
+                                    >
+                                        {/* ⬅️ УВЕЛИЧИЛ размер самой иконки с 20 до 32 */}
+                                        <Icon size={32} color="#fff" />
+                                    </motion.div>
                                 </motion.div>
                             ))}
 
-                            {/* Logo Reveal */}
+                            {/* 2. ЛОГОТИП */}
                             <motion.img
                                 src={avatar1}
                                 alt="Caster AI"
                                 animate={{
-                                    scale: [0, 0, 0, 1.1, 1, 1, 0.8, 0],
-                                    opacity: [0, 0, 0, 1, 1, 1, 0, 0],
-                                    rotate: [0, 0, 0, 0, 0, 0, -5, -5]
+                                    scale: [0, 0, 1.2, 1, 1, 0],
+                                    opacity: [0, 0, 1, 1, 1, 0],
+                                    rotate: [0, 0, 0, 0, 0, -10]
                                 }}
                                 transition={{
-                                    duration: 10,
-                                    times: [0, 0.3, 0.3, 0.35, 0.4, 0.6, 0.65, 1],
-                                    repeat: Infinity,
-                                    ease: "easeInOut"
-                                }}
-                                style={{
-                                    position: 'absolute',
-                                    width: '80px',
-                                    height: '80px',
-                                    borderRadius: '20px',
-                                    boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
-                                    zIndex: 5
-                                }}
-                            />
-
-                            {/* Final Text */}
-                            <motion.div
-                                animate={{
-                                    opacity: [0, 0, 0, 0, 1, 1, 0],
-                                    scale: [0.8, 0.8, 0.8, 0.8, 1, 1, 0.9],
-                                    y: [20, 20, 20, 20, 0, 0, -10]
-                                }}
-                                transition={{
-                                    duration: 10,
-                                    times: [0, 0.65, 0.65, 0.65, 0.7, 0.95, 1],
+                                    duration: 4,
+                                    times: [0, 0.38, 0.42, 0.45, 0.85, 0.95],
                                     repeat: Infinity,
                                     ease: "backOut"
                                 }}
                                 style={{
                                     position: 'absolute',
-                                    textAlign: 'center',
+                                    width: '100px', // Чуть-чуть увеличил и логотип (было 90)
+                                    height: '100px',
+                                    borderRadius: '24px',
+                                    boxShadow: '0 0 40px rgba(47, 239, 85, 0.4)',
                                     zIndex: 10,
+                                    border: '2px solid rgba(255,255,255,0.2)'
+                                }}
+                            />
+
+                            {/* 3. ТЕКСТ */}
+                            <motion.div
+                                animate={{
+                                    opacity: [0, 0, 1, 1, 0],
+                                    y: [20, 20, 65, 65, 80], // Чуть ниже сдвинул текст из-за больших иконок
+                                    scale: [0.9, 0.9, 1, 1, 0.9]
+                                }}
+                                transition={{
+                                    duration: 4,
+                                    times: [0, 0.4, 0.45, 0.85, 0.95],
+                                    repeat: Infinity,
+                                    ease: "circOut"
+                                }}
+                                style={{
+                                    position: 'absolute',
+                                    textAlign: 'center',
+                                    zIndex: 20,
                                     width: '100%',
                                     display: 'flex',
                                     flexDirection: 'column',
@@ -1634,16 +1637,25 @@ const Hero = () => {
                                 }}
                             >
                                 <h3 style={{
-                                    fontSize: '28px',
+                                    fontSize: '24px', // Чуть крупнее шрифт
                                     fontWeight: '900',
                                     color: '#fff',
                                     lineHeight: '1',
-                                    textShadow: '0 4px 20px rgba(0,0,0,0.3)',
-                                    marginBottom: '8px'
+                                    textShadow: '0 4px 10px rgba(0,0,0,0.5)',
+                                    marginBottom: '4px'
                                 }}>
-                                    ALL<br />CASTINGS<br />INSIDE
+                                    ALL IN ONE
                                 </h3>
-                                <div style={{ width: '40px', height: '4px', background: '#fff', borderRadius: '2px' }} />
+                                <div style={{
+                                    fontSize: '13px',
+                                    color: 'rgba(255,255,255,0.7)',
+                                    fontWeight: '600',
+                                    background: 'rgba(255,255,255,0.1)',
+                                    padding: '4px 12px',
+                                    borderRadius: '12px'
+                                }}>
+                                    Direct Casting
+                                </div>
                             </motion.div>
                         </div>
                     </motion.div>

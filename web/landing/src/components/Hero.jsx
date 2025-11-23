@@ -1522,7 +1522,7 @@ const Hero = () => {
                                         transition={{ type: "spring", stiffness: 300, damping: 30 }}
                                         style={{
                                             position: 'absolute',
-                                            width: '100%',
+                                            width: '95%',
                                             maxWidth: '100%',
                                             background: 'rgba(255, 255, 255, 0.9)',
                                             backdropFilter: 'blur(20px)',
@@ -1534,9 +1534,9 @@ const Hero = () => {
                                             boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
                                             border: '1px solid rgba(255,255,255,0.5)',
                                             top: '50%',
-                                            marginTop: '-30px',
                                             left: 0,
-                                            right: 0
+                                            right: 0,
+                                            margin: '-30px auto 0 auto'
                                         }}
                                     >
                                         <div style={{

@@ -1,0 +1,566 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+@font-face {
+  font-family: 'Alro';
+  src: url('./assets/alro-alro-bold-700.otf') format('opentype');
+  font-weight: 700;
+  font-style: normal;
+}
+
+:root {
+  /* Apple-style Colors */
+  --bg: #000000;
+  --text-primary: #f5f5f7;
+  --text-secondary: #86868b;
+  --surface: #161617;
+  --surface-elevated: #1d1d1f;
+  --accent: #0071e3;
+  --accent-hover: #0077ed;
+  --success: #30d158;
+  --border: rgba(255, 255, 255, 0.1);
+
+  /* Spacing System */
+  --space-xs: 8px;
+  --space-sm: 16px;
+  --space-md: 24px;
+  --space-lg: 48px;
+  --space-xl: 80px;
+  --space-2xl: 120px;
+
+  /* Typography */
+  --font-system: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', sans-serif;
+
+  /* Layout */
+  --max-width: 980px;
+  --max-width-wide: 1400px;
+
+  /* Effects */
+  --card-radius: 18px;
+  --transition: cubic-bezier(0.28, 0.11, 0.32, 1);
+}
+
+/* Reset & Base */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  height: 100%;
+  overflow-x: hidden;
+}
+
+body {
+  font-family: var(--font-system);
+  background: var(--bg);
+  color: var(--text-primary);
+  line-height: 1.5;
+  overflow-x: hidden;
+  min-height: 100vh;
+  min-height: -webkit-fill-available;
+  position: relative;
+}
+
+/* Telegram Mini App specific */
+.tg-viewport {
+  height: 100vh;
+  height: var(--tg-viewport-height, 100vh);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Typography Scale - Responsive */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+h1 {
+  font-size: clamp(40px, 6vw, 80px);
+  font-weight: 800;
+}
+
+h2 {
+  font-size: clamp(32px, 4.5vw, 64px);
+  font-weight: 700;
+}
+
+h3 {
+  font-size: clamp(24px, 2.5vw, 40px);
+  font-weight: 600;
+}
+
+h4 {
+  font-size: clamp(18px, 2vw, 24px);
+  font-weight: 600;
+}
+
+p {
+  font-size: clamp(16px, 1.2vw, 21px);
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Layout Utilities */
+.section {
+  position: relative;
+  padding: clamp(60px, 10vh, 120px) 0;
+  width: 100%;
+}
+
+.section-compact {
+  padding: clamp(40px, 8vh, 80px) 0;
+}
+
+.container {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: 0 clamp(16px, 3vw, 48px);
+  width: 100%;
+}
+
+.container-wide {
+  max-width: var(--max-width-wide);
+}
+
+.container-fluid {
+  width: 100%;
+  max-width: 100%;
+  padding: 0 clamp(16px, 2vw, 32px);
+  margin: 0 auto;
+}
+
+.section-full {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+/* Grid System - Equal Height Cards */
+.grid {
+  display: grid;
+  gap: clamp(16px, 2vw, 24px);
+}
+
+.grid-2 {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  grid-auto-rows: 1fr;
+}
+
+.grid-3 {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  grid-auto-rows: 1fr;
+}
+
+/* Responsive Grids */
+@media (min-width: 768px) {
+  .grid-2 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .grid-3 {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* For ultra-wide screens - limit grid expansion */
+@media (min-width: 1600px) {
+  .grid-3 {
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+}
+
+/* Apple-style Card - Equal Height */
+.card {
+  background: var(--surface);
+  border-radius: var(--card-radius);
+  padding: clamp(24px, 3vw, 48px);
+  border: 1px solid var(--border);
+  transition: all 0.3s var(--transition);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.card:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  transform: translateY(-2px);
+}
+
+/* Procreate-style colorful tiles */
+.pc-tiles {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  grid-auto-rows: 90px;
+  gap: 16px;
+  width: 100%;
+}
+
+.pc-tile {
+  border-radius: 22px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  position: relative;
+  overflow: hidden;
+}
+
+.pc-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Span helpers */
+.w1 {
+  grid-column: span 3;
+}
+
+.w2 {
+  grid-column: span 6;
+}
+
+.w3 {
+  grid-column: span 9;
+}
+
+.w4 {
+  grid-column: span 12;
+}
+
+.w-4 {
+  grid-column: span 4;
+}
+
+.h1 {
+  grid-row: span 1;
+}
+
+.h2 {
+  grid-row: span 2;
+}
+
+.h3 {
+  grid-row: span 3;
+}
+
+.h4 {
+  grid-row: span 4;
+}
+
+.h5 {
+  grid-row: span 5;
+}
+
+.pc-media {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(180deg, #1d1d1f, #0f0f10);
+}
+
+.pc-caption {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.pc-chip {
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.pc-text {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* Color gradients inspired by procreate palette */
+.g-blue {
+  background: radial-gradient(120% 120% at 0% 0%, #0a84ff33 0%, transparent 60%), linear-gradient(180deg, #0b1630, #0f1420);
+}
+
+.g-purple {
+  background: radial-gradient(120% 120% at 100% 0%, #8e44ff33 0%, transparent 60%), linear-gradient(180deg, #181028, #141120);
+}
+
+.g-cyan {
+  background: radial-gradient(120% 120% at 0% 100%, #00c7ff33 0%, transparent 60%), linear-gradient(180deg, #0d1b24, #0c141b);
+}
+
+.g-peach {
+  background: radial-gradient(120% 120% at 100% 100%, #ffb19933 0%, transparent 60%), linear-gradient(180deg, #241214, #1b1212);
+}
+
+.g-indigo {
+  background: radial-gradient(120% 120% at 0% 0%, #4f6bff33 0%, transparent 60%), linear-gradient(180deg, #10142a, #0e1222);
+}
+
+.g-pink {
+  background: radial-gradient(120% 120% at 100% 0%, #ff4f9933 0%, transparent 60%), linear-gradient(180deg, #1f1020, #160e18);
+}
+
+.g-magenta {
+  background: radial-gradient(120% 100% at 0% 100%, rgb(65, 105, 225) 0%, transparent 60%), linear-gradient(130deg, #000000, rgb(4, 248, 163));
+}
+
+.g-green {
+  background: radial-gradient(120% 120% at 100% 100%, #30d15833 0%, transparent 60%), linear-gradient(180deg, #0d1f16, #0b1812);
+}
+
+.g-aqua {
+  background: radial-gradient(120% 120% at 0% 0%, #2cdfd833 0%, transparent 60%), linear-gradient(180deg, #0d1f1f, #0a1616);
+}
+
+.g-yellow {
+  background: radial-gradient(120% 120% at 100% 0%, #ffd63333 0%, transparent 60%), linear-gradient(180deg, #241f0d, #1a1508);
+}
+
+.g-orange {
+  background: radial-gradient(120% 120% at 0% 100%, #ff7a1a33 0%, transparent 60%), linear-gradient(180deg, #26170e, #1d130c);
+}
+
+.g-lime {
+  background: radial-gradient(120% 120% at 100% 100%, #a6ff0033 0%, transparent 60%), linear-gradient(180deg, #17210d, #121a0b);
+}
+
+.g-teal {
+  background: radial-gradient(120% 120% at 50% 50%, #00ffd533 0%, transparent 60%), linear-gradient(180deg, #0e2220, #0b1a18);
+}
+
+@media (max-width: 1024px) {
+  .pc-tiles {
+    grid-template-columns: repeat(8, 1fr);
+    grid-auto-rows: 80px;
+  }
+
+  .w1 {
+    grid-column: span 4;
+  }
+
+  .w2 {
+    grid-column: span 8;
+  }
+
+  .w3 {
+    grid-column: span 8;
+  }
+
+  .w4 {
+    grid-column: span 8;
+  }
+
+  .w-4 {
+    grid-column: span 4;
+  }
+}
+
+@media (max-width: 640px) {
+  .pc-tiles {
+    grid-template-columns: repeat(4, 1fr);
+    grid-auto-rows: 72px;
+    gap: 12px;
+  }
+
+  .w1,
+  .w2,
+  .w3,
+  .w4,
+  .w-4 {
+    grid-column: span 4;
+  }
+}
+
+/* Icon styling */
+.icon-wrapper {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 113, 227, 0.1);
+  border-radius: 12px;
+  margin-bottom: var(--space-sm);
+}
+
+/* Elevated Surface */
+.surface-elevated {
+  background: var(--surface-elevated);
+}
+
+/* Text Utilities */
+.text-gradient {
+  background: linear-gradient(90deg, #0071e3, #00a3ff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.text-center {
+  text-align: center;
+}
+
+.text-secondary {
+  color: var(--text-secondary);
+}
+
+/* Spacing Utilities */
+.mb-xs {
+  margin-bottom: var(--space-xs);
+}
+
+.mb-sm {
+  margin-bottom: var(--space-sm);
+}
+
+.mb-md {
+  margin-bottom: var(--space-md);
+}
+
+.mb-lg {
+  margin-bottom: var(--space-lg);
+}
+
+.mb-xl {
+  margin-bottom: var(--space-xl);
+}
+
+.mt-xs {
+  margin-top: var(--space-xs);
+}
+
+.mt-sm {
+  margin-top: var(--space-sm);
+}
+
+.mt-md {
+  margin-top: var(--space-md);
+}
+
+.mt-lg {
+  margin-top: var(--space-lg);
+}
+
+.mt-xl {
+  margin-top: var(--space-xl);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2c2c2e;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3a3a3c;
+}
+
+/* Animations */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-in {
+  animation: fadeInUp 0.8s var(--transition) both;
+}
+
+/* Responsive - Mobile First for Telegram */
+@media (max-width: 768px) {
+  .section {
+    padding: var(--space-lg) 0;
+  }
+
+  h1 {
+    font-size: 40px;
+  }
+
+  h2 {
+    font-size: 32px;
+  }
+
+  .container {
+    padding: 0 var(--space-sm);
+  }
+}
+
+/* Large screens optimization */
+@media (min-width: 1440px) {
+  .section {
+    padding: clamp(80px, 12vh, 140px) 0;
+  }
+
+  .container {
+    max-width: 1200px;
+  }
+}
+
+/* Ultra-wide screens */
+@media (min-width: 1920px) {
+  .container {
+    max-width: 1400px;
+  }
+
+  /* Prevent text from becoming too large */
+  h1 {
+    font-size: 72px;
+  }
+
+  h2 {
+    font-size: 56px;
+  }
+
+  p {
+    font-size: 20px;
+  }
+}
+
+/* Telegram Mini App safe area */
+@supports (padding: max(0px)) {
+  body {
+    padding-left: max(var(--space-sm), env(safe-area-inset-left));
+    padding-right: max(var(--space-sm), env(safe-area-inset-right));
+    padding-bottom: max(var(--space-sm), env(safe-area-inset-bottom));
+  }
+}

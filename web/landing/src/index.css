@@ -302,7 +302,7 @@ a {
 
 /* Color gradients inspired by procreate palette */
 .g-blue {
-  background: radial-gradient(120% 120% at 0% 0%, #0a84ff33 0%, transparent 60%), linear-gradient(180deg, #0b1630, #0f1420);
+  background: radial-gradient(120% 120% at 0% 0%, #4691bf 0%, transparent 60%), linear-gradient(600deg, #37cd45, #4691bf);
 }
 
 .g-purple {

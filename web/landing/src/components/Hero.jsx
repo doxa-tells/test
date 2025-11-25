@@ -1856,7 +1856,7 @@ const Hero = () => {
                         </div>
                     </motion.div>
 
-                    {/* 15. Career Growth / Partners */}
+                    {/* 14. Наши партнеры */}
                     <motion.div
                         className="pc-tile g-green"
                         initial={{ opacity: 0, y: 20 }}
@@ -1883,7 +1883,8 @@ const Hero = () => {
                             backgroundClip: 'text'
                         }}>Наши партнеры</h3>
 
-                        {/* Scrolling logos container */}
+                        {/* Я убрал текст "Scrolling logos container", который выводился на экран */}
+
                         <div style={{
                             display: 'flex',
                             gap: '16px',
@@ -1899,13 +1900,11 @@ const Hero = () => {
                                             style={{
                                                 minWidth: '140px',
                                                 height: '120px',
-                                                background: 'rgba(255,255,255,0.05)',
-                                                borderRadius: '12px',
+                                                // 👇 Я УДАЛИЛ background, border и borderRadius
                                                 display: 'flex',
                                                 alignItems: 'center',
                                                 justifyContent: 'center',
                                                 padding: '4px',
-                                                border: '1px solid rgba(255,255,255,0.1)',
                                                 overflow: 'hidden'
                                             }}
                                         >
@@ -1932,128 +1931,37 @@ const Hero = () => {
                         `}</style>
                     </motion.div>
 
-                </div>
-            </div >
+                </div> {/* ⬅️ ЗАКРЫВАЕМ НИЖНЮЮ СЕТКУ (SECONDARY) */}
+            </div> {/* ⬅️ ЗАКРЫВАЕМ CONTAINER-FLUID */}
 
-            {/* Mobile Responsive Styles & New Desktop Adaptive */}
-            < style > {`
-                /* Base Grid Styles */
-                .pc-tiles {
-                    display: grid;
-                    gap: 20px;
-                    width: 100%;
-                    margin: 0 auto;
-                    /* Ограничиваем максимальную ширину, чтобы на iMac не растягивало слишком сильно */
-                    max-width: 1600px; 
-                }
-
-                /* Primary Grid (5 columns) */
-                .pc-tiles-primary {
-                    grid-template-columns: repeat(5, 1fr);
-                    /* Адаптивная высота ряда: растет вместе с экраном */
-                    grid-auto-rows: minmax(clamp(140px, 12vh, 220px), auto);
-                }
-
-                /* Secondary Grid (8 columns для более гибкого разделения) */
-                .pc-tiles-secondary {
-                    grid-template-columns: repeat(8, 1fr);
-                    grid-auto-rows: minmax(clamp(140px, 12vh, 220px), auto);
-                    margin-top: 20px;
-                }
-
-                /* Large Screens (iMac 27" +) */
-                @media (min-width: 1920px) {
-                    .pc-tiles {
-                        max-width: 2000px; /* Даем больше ширины на огромных экранах */
-                        gap: 24px;
-                    }
-                    .pc-tiles-primary, .pc-tiles-secondary {
-                        grid-auto-rows: minmax(180px, auto); /* Фиксируем минимальную высоту побольше */
-                    }
-                }
-
-                /* Laptop / Desktop Standard (1280px - 1600px) */
-                @media (max-width: 1600px) {
-                    .pc-tiles {
-                        max-width: 1200px;
-                    }
-                }
-
-                /* Tablet Landscape (1024px - 1280px) */
-                @media (max-width: 1280px) {
-                    .pc-tiles {
-                        max-width: 960px;
-                    }
-                }
-
-                /* Tablet Portrait & Small Laptops (max 1024px) - Перестроение в 2 колонки */
-                @media (max-width: 1024px) {
-                    .pc-tiles-primary, 
-                    .pc-tiles-secondary {
-                        grid-template-columns: repeat(2, 1fr) !important;
-                        grid-auto-rows: minmax(160px, auto);
-                    }
-
-                    /* Сброс и переопределение позиций для 2 колонок */
-                    .pc-tile {
-                        grid-column: span 1 !important;
-                        grid-row: span 1 !important;
-                    }
-
-                    /* Специфичные переопределения для сохранения логики */
-                    /* Большие блоки на всю ширину (2 колонки) */
-                    .pc-tile[style*="gridArea: '2 / 2 / span 2 / span 3'"], /* Main Block */
-                    .pc-tile[style*="gridColumn: '1 / span 2'"],
-                    .pc-tile[style*="gridColumn: '5'"] { 
-                        grid-column: span 2 !important; 
-                    }
-                    
-                    /* Main block height adjustment */
-                    .pc-tile[style*="gridArea: '2 / 2 / span 2 / span 3'"] {
-                        min-height: 300px !important;
-                    }
-
-                    /* Vertical blocks */
-                    .pc-tile[style*="gridRow: '1 / span 2'"] { 
-                        grid-row: span 2 !important; 
-                    }
-                }
-
-                /* Mobile (max 640px) - 1 колонка */
-                @media (max-width: 640px) {
-                    .pc-tiles-primary,
-                    .pc-tiles-secondary {
-                        display: flex;
-                        flex-direction: column;
-                        gap: 16px;
-                    }
-                    
-                    .pc-tile {
-                        width: 100% !important;
-                        grid-column: auto !important;
-                        grid-row: auto !important;
-                        min-height: 140px;
-                    }
-                    
-                    .pc-tile[style*="gridRow: 'span 2'"] { min-height: 200px; }
-                }
+            <style>{`
+                .pc-tiles { display: grid; gap: 20px; width: 100%; margin: 0 auto; max-width: 1600px; }
+                .pc-tiles-primary { grid-template-columns: repeat(5, 1fr); grid-auto-rows: minmax(clamp(140px, 12vh, 220px), auto); }
+                .pc-tiles-secondary { grid-template-columns: repeat(8, 1fr); grid-auto-rows: minmax(clamp(140px, 12vh, 220px), auto); margin-top: 20px; }
+                .g-blue { background-color: #2e6ffb; }
+                .g-indigo { background-color: #6366f1; }
+                .g-lime { background-color: #84cc16; }
+                .g-teal { background-color: #14b8a6; }
+                .g-pink { background-color: #ec4899; }
+                .g-purple { background-color: #a855f7; }
+                .g-green { background-color: #22c55e; }
+                .g-brown { background: linear-gradient(135deg, rgba(74, 148, 199, 0.25), rgba(46, 84, 166, 0.80)); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.18); }
                 
-                /* Градиенты */
-                .g-gradient-main { background: linear-gradient(135deg, #2fef55ff, #2df5d3ff, #00f9a2ff); }
-                .g-blue-light { background-color: #2e6ffb; }
-                .g-brown { 
-                    background: linear-gradient(135deg, rgba(74, 148, 199, 0.25), rgba(46, 84, 166, 0.80));
-                    backdrop-filter: blur(20px);
-                    -webkit-backdrop-filter: blur(20px);
-                    border: 1px solid rgba(255, 255, 255, 0.18);
-                    box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37),
-                                inset 0 1px 1px 0 rgba(255, 255, 255, 0.3);
+                @media (min-width: 1920px) { .pc-tiles { max-width: 2000px; gap: 24px; } .pc-tiles-primary, .pc-tiles-secondary { grid-auto-rows: minmax(180px, auto); } }
+                @media (max-width: 1600px) { .pc-tiles { max-width: 1200px; } }
+                @media (max-width: 1280px) { .pc-tiles { max-width: 960px; } }
+                @media (max-width: 1024px) {
+                    .pc-tiles-primary, .pc-tiles-secondary { grid-template-columns: repeat(2, 1fr) !important; grid-auto-rows: minmax(160px, auto); }
+                    .pc-tile { grid-column: span 1 !important; grid-row: span 1 !important; }
+                    .pc-tile[style*="gridArea: '2 / 2"] { grid-column: span 2 !important; }
                 }
-                .g-green { background-color: #28a745; }
-                .g-yellow { background: linear-gradient(135deg, #15140fff, #FDE047); }
-                .g-dark { background-color: rgba(30, 30, 30, 1); }
-            `}</style >
-        </section >
+                @media (max-width: 640px) {
+                    .pc-tiles-primary, .pc-tiles-secondary { display: flex; flexDirection: column; gap: 16px; }
+                    .pc-tile { width: 100% !important; min-height: 140px; }
+                }
+                .g-gradient-main { background: linear-gradient(135deg, #2fef55ff, #2df5d3ff, #00f9a2ff); }
+            `}</style>
+        </section>
     );
 };
 

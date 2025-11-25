@@ -20,6 +20,9 @@ import extrasImage from '../assets/photosmobile/ams.jpg';
 import dramaImage from '../assets/photosmobile/Gemini_Generated_Image_fq0npifq0npifq0n.png';
 import likeIcon from '../assets/photosmobile/like.svg';
 import dislikeIcon from '../assets/photosmobile/dislike.svg';
+import { Canvas, useFrame } from '@react-three/fiber';
+import { useTexture, MeshReflectorMaterial } from '@react-three/drei';
+import * as THREE from 'three';
 
 
 
@@ -970,6 +973,84 @@ const MoneyGraph = ({ tileStyle }) => {
     );
 };
 
+// --- 3D CAROUSEL COMPONENTS Логотипы партнеров (ВСТАВЬ ЭТО ПЕРЕД const Hero) ---
+
+const LogoCard = ({ url, position, rotation }) => {
+    const texture = useTexture(url);
+    return (
+        <mesh position={position} rotation={rotation}>
+            {/* 👇 ИЗМЕНИЛИ ТУТ. Два одинаковых числа делают квадрат */}
+            <planeGeometry args={[2.2, 2.2]} />
+
+            <meshBasicMaterial
+                map={texture}
+                transparent={true}
+                side={THREE.DoubleSide}
+            />
+        </mesh>
+    );
+};
+const ThreeCarousel = () => {
+    const groupRef = React.useRef();
+    // Берем картинки, которые ты уже импортировал наверху
+    const logos = [partner1, partner2, partner3, partner4, partner5, partner6, partner7, partner8];
+    const radius = 7;
+
+    useFrame((state, delta) => {
+        if (groupRef.current) {
+            groupRef.current.rotation.y += delta * 0.4;
+        }
+    });
+
+    return (
+        <group ref={groupRef} position={[0, 0.5, 0]}>
+            {logos.map((url, i) => {
+                const angle = (i / logos.length) * Math.PI * 2;
+                const x = Math.sin(angle) * radius;
+                const z = Math.cos(angle) * radius;
+                return (
+                    <LogoCard
+                        key={i}
+                        url={url}
+                        position={[x, 0, z]}
+                        rotation={[0, angle, 0]}
+                    />
+                );
+            })}
+        </group>
+    );
+};
+
+const CarouselScene = () => {
+    return (
+        <Canvas camera={{ position: [0, 3, 13], fov: 45 }}>
+            <pointLight position={[-10, 5, 5]} color="#ccff00" intensity={500} distance={50} />
+            <pointLight position={[10, 5, 5]} color="#0044ff" intensity={500} distance={50} />
+            <ambientLight intensity={1} />
+
+            <React.Suspense fallback={null}>
+                <ThreeCarousel />
+            </React.Suspense>
+
+            <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -2.5, 0]}>
+                <planeGeometry args={[20, 20]} />
+                <MeshReflectorMaterial
+                    blur={[300, 100]}
+                    resolution={512}
+                    mixBlur={1}
+                    mixStrength={50}
+                    roughness={0.1}
+                    depthScale={1.2}
+                    minDepthThreshold={0.4}
+                    maxDepthThreshold={1.4}
+                    color="#101010"
+                    metalness={0.5}
+                />
+            </mesh>
+        </Canvas>
+    );
+};
+
 const Hero = () => {
     const [notifications, setNotifications] = useState([
         { id: 1, title: 'Caster AI', body: 'Новый мэтч: Главная роль', time: 'сейчас' },
@@ -1679,22 +1760,25 @@ const Hero = () => {
 
                     </motion.div>
 
-                    {/* 11. Success Stats */}
+                    {/* 11. 3D Logo Carousel (Чистая сцена) */}
                     <motion.div
-                        className="pc-tile g-green"
+                        className="pc-tile"
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.6, delay: 0.65 }}
                         style={{
                             gridColumn: '5',
                             gridRow: '3',
-                            ...tileStyle
+                            ...tileStyle,
+                            padding: 0,
+                            background: '#000000',
+                            overflow: 'hidden',
+                            position: 'relative',
+                            border: '1px solid #333'
                         }}
                     >
-                        <TrendingUp size={24} color="#fff" />
-                        <div>
-                            <h3 style={{ fontSize: '16px', color: '#fff', marginBottom: '4px' }}>Stats</h3>
-                            <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.7)' }}>Success Rate</p>
+                        <div style={{ width: '100%', height: '100%', cursor: 'grab' }}>
+                            <CarouselScene />
                         </div>
                     </motion.div>
 

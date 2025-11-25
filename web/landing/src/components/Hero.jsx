@@ -1544,7 +1544,7 @@ const Hero = () => {
 
                     {/* --- ПРАВАЯ КОЛОНКА (2 блока) --- */}
 
-                    {/* 10. Unified Communications (LOGO KING VERSION) */}
+                    {/* 10. Unified Communications (OPTIMIZED: GPU ACCELERATED) */}
                     <motion.div
                         className="pc-tile g-purple"
                         initial={{ opacity: 0, x: 20 }}
@@ -1557,24 +1557,29 @@ const Hero = () => {
                             padding: '0',
                             position: 'relative',
                             background: '#0f172a',
-                            overflow: 'hidden'
+                            overflow: 'hidden',
+                            // Оптимизация контейнера
+                            transform: 'translateZ(0)'
                         }}
                     >
-                        {/* --- СЛОЙ 1: ТЕКСТ (УРЕЗАН: 0.0 -> 1.2 сек) --- */}
+                        {/* --- СЛОЙ 1: ТЕКСТ --- */}
                         <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10, pointerEvents: 'none' }}>
                             <motion.div
                                 animate={{
                                     opacity: [0, 1, 1, 0, 0],
                                     scale: [0.9, 1, 1, 0.5, 0],
-                                    filter: ["blur(10px)", "blur(0px)", "blur(0px)", "blur(10px)", "blur(10px)"]
+                                    // ❌ УБРАЛ FILTER (BLUR) — это главная причина лагов
                                 }}
                                 transition={{
-                                    duration: 6, // Цикл 6 сек
-                                    times: [0, 0.05, 0.25, 0.45, 1], // Исчезает на 0.2 (1.2 сек)
+                                    duration: 6,
+                                    times: [0, 0.05, 0.25, 0.45, 1],
                                     repeat: Infinity,
                                     ease: "easeInOut"
                                 }}
-                                style={{ textAlign: 'center' }}
+                                style={{
+                                    textAlign: 'center',
+                                    willChange: 'transform, opacity' // ✅ ВКЛЮЧАЕМ ВИДЕОКАРТУ
+                                }}
                             >
                                 <h3 style={{ fontSize: '34px', fontWeight: '900', color: '#fff', lineHeight: '1', marginBottom: '6px' }}>
                                     ALL IN ONE
@@ -1585,7 +1590,7 @@ const Hero = () => {
                             </motion.div>
                         </div>
 
-                        {/* --- СЛОЙ 2: ИКОНКИ (УРЕЗАНЫ: 1.2 сек -> 3.0 сек) --- */}
+                        {/* --- СЛОЙ 2: ИКОНКИ --- */}
                         <div style={{ position: 'absolute', top: '50%', left: '50%', width: 0, height: 0, zIndex: 20 }}>
                             {[
                                 { Icon: Send, color: '#0088cc' },
@@ -1597,7 +1602,12 @@ const Hero = () => {
                             ].map(({ Icon, color }, i) => (
                                 <motion.div
                                     key={i}
-                                    style={{ position: 'absolute', top: -30, left: -30, width: '60px', height: '60px', rotate: i * 60, transformOrigin: 'center center' }}
+                                    style={{
+                                        position: 'absolute', top: -30, left: -30, width: '60px', height: '60px',
+                                        rotate: i * 60,
+                                        transformOrigin: 'center center',
+                                        willChange: 'transform' // ✅ ОПТИМИЗАЦИЯ ВРАЩЕНИЯ
+                                    }}
                                 >
                                     <motion.div
                                         animate={{
@@ -1608,12 +1618,14 @@ const Hero = () => {
                                         }}
                                         transition={{
                                             duration: 6,
-                                            // Стартуют на 0.2 (1.2 сек), исчезают на 0.5 (3.0 сек)
                                             times: [0, 0.2, 0.45, 0.5, 1],
                                             repeat: Infinity,
                                             ease: "easeInOut"
                                         }}
-                                        style={{ width: '100%', height: '100%', borderRadius: '16px', background: color, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(0,0,0,0.3)' }}
+                                        style={{
+                                            width: '100%', height: '100%', borderRadius: '16px', background: color, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                                            willChange: 'transform, opacity' // ✅ ОПТИМИЗАЦИЯ ПОЛЕТА
+                                        }}
                                     >
                                         <Icon size={28} color="#fff" />
                                     </motion.div>
@@ -1621,7 +1633,7 @@ const Hero = () => {
                             ))}
                         </div>
 
-                        {/* --- СЛОЙ 3: ЛОГОТИП (КОРОЛЬ ЭКРАНА: 3.0 сек -> 6.0 сек) --- */}
+                        {/* --- СЛОЙ 3: ЛОГОТИП --- */}
                         <motion.div
                             animate={{
                                 scale: [0, 0, 1.1, 1, 1, 0],
@@ -1629,8 +1641,7 @@ const Hero = () => {
                                 rotate: [0, 0, 0, 0, 0, -5]
                             }}
                             transition={{
-                                duration: 6, // ⬅️ Увеличили время (замедлили)
-                                // 0.4 — СТАРТ (Синхрон с иконками)
+                                duration: 6,
                                 times: [0, 0.4, 0.45, 0.98, 0.99, 1],
                                 repeat: Infinity,
                                 ease: "easeInOut"
@@ -1649,7 +1660,8 @@ const Hero = () => {
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 zIndex: 50,
-                                boxShadow: '0 0 50px rgba(255, 255, 255, 0.3)'
+                                boxShadow: '0 0 50px rgba(255, 255, 255, 0.3)',
+                                willChange: 'transform, opacity' // ✅ ОПТИМИЗАЦИЯ ЛОГОТИПА
                             }}
                         >
                             <img

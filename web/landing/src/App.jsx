@@ -1,5 +1,5 @@
 import React from 'react';
-import Hero from './components/Hero';
+import Hero from './components/hero';
 import Comparison from './components/Comparison';
 import Benefits from './components/Benefits';
 import Pricing from './components/Pricing';

@@ -1,0 +1,121 @@
+/**
+ * CSS оптимизации для производительности анимаций
+ */
+
+/* Базовые оптимизации для всех анимаций */
+.optimized-animation {
+    will-change: transform, opacity;
+    transform: translate3d(0, 0, 0);
+    /* Force GPU acceleration */
+    backface-visibility: hidden;
+    perspective: 1000px;
+}
+
+/* Класс для отключения анимаций если prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+
+    *,
+    ::before,
+    ::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}
+
+/* Анимации только через transform и opacity для лучшей производительности */
+.fade-in {
+    animation: fadeIn 0.3s ease-in-out forwards;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translate3d(0, 10px, 0);
+    }
+
+    to {
+        opacity: 1;
+        transform: translate3d(0, 0, 0);
+    }
+}
+
+.slide-up {
+    animation: slideUp 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translate3d(0, 20px, 0);
+    }
+
+    to {
+        opacity: 1;
+        transform: translate3d(0, 0, 0);
+    }
+}
+
+/* GPU-accelerated pulse */
+.pulse {
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+        transform: scale3d(1, 1, 1);
+    }
+
+    50% {
+        opacity: 0.5;
+        transform: scale3d(1.05, 1.05, 1.05);
+    }
+}
+
+/* Rotating animation optimized */
+.rotate {
+    animation: rotate 20s linear infinite;
+}
+
+@keyframes rotate {
+    from {
+        transform: rotate3d(0, 0, 1, 0deg);
+    }
+
+    to {
+        transform: rotate3d(0, 0, 1, 360deg);
+    }
+}
+
+/* Tile animations - оптимизированные */
+.pc-tile {
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+        box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    will-change: transform;
+}
+
+.pc-tile:hover {
+    transform: translate3d(0, -2px, 0);
+}
+
+/* Disable expensive animations on low-end devices */
+@media (max-width: 768px) {
+    .pc-tile:hover {
+        transform: none;
+    }
+
+    .expensive-animation {
+        animation: none !important;
+    }
+}
+
+/* Container queries для адаптивных анимаций */
+@container (max-width: 600px) {
+    .adaptive-animation {
+        animation-duration: 0.2s !important;
+    }
+}
